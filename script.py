@@ -221,9 +221,8 @@ def handler(event):
         "s3",
         aws_access_key_id=os.getenv("AWS_ACCESS_KEY_ID_1"),
         aws_secret_access_key=os.getenv("AWS_SECRET_ACCESS_KEY_1"),
-        aws_session_token=os.getenv("AWS_SESSION_TOKEN_1"),  # if needed
     )
-    s3_client.download_file("your_bucket_name", file_name, f"/tmp/{file_name}")
+    s3_client.download_file(os.getenv("AWS_BUCKET_1"), file_name, f"/tmp/{file_name}")
 
     try:
         input_file_path = "/tmp/" + event.file
@@ -235,11 +234,10 @@ def handler(event):
             "s3",
             aws_access_key_id=os.getenv("AWS_ACCESS_KEY_ID_2"),
             aws_secret_access_key=os.getenv("AWS_SECRET_ACCESS_KEY_2"),
-            aws_session_token=os.getenv("AWS_SESSION_TOKEN_2"),  # if needed
-            endpoint_url="https://your-endpoint-url",  # URL for your S3-compatible storage
+            endpoint_url=os.getenv("AWS_ENDPOINT_2"),
         )
         for file_name in glob.glob(output_folder + "/*"):
-            s3_client_2.upload_file(file_name, "your_bucket_name", file_name)
+            s3_client_2.upload_file(file_name, os.getenv("AWS_BUCKET_2"), file_name)
 
         return "Processing complete"
     except Exception as e:
