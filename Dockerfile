@@ -1,4 +1,4 @@
-FROM ghcr.io/subatic/transcoder-base:latest
+FROM deepakdotpro/transcoder-base:latest
 
 # Set the working directory in the container to /app
 WORKDIR /app
