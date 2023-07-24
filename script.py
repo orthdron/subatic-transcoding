@@ -196,12 +196,12 @@ def get_video_duration(input_file_path):
 
 
 def handler(event):
+    job_input = event["input"]
     print(event)
-    file_name = event.file
+    file_name = job_input["file"]
     fps = get_video_frame_rate(file_name)
     output_folder = pathlib.Path(file_name).parent / pathlib.Path(file_name).stem
 
-    # Download the file from AWS account 1 to /tmp/{event.file}
     s3_client = boto3.client(
         "s3",
         aws_access_key_id=os.getenv("AWS_ACCESS_KEY_ID_1"),
