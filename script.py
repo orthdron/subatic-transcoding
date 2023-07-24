@@ -1,5 +1,4 @@
 import os
-import subprocess
 import pathlib
 import json
 import boto3
@@ -9,34 +8,46 @@ import runpod
 import datetime
 
 
+# Constants
+SPRITES = 100
+TILE_WIDTH = 384
+TILE_HEIGHT = 216
+TILES_X = 10
+TILES_Y = 10
+
+
 def create_folder_if_not_exists(dir):
     pathlib.Path(dir).mkdir(parents=True, exist_ok=True)
 
 
-def transcode_video(input_file_path, resolution, bitrate, output_folder):
+def transcode_video(input_file_path, resolution, bitrate, output_folder, fps):
     output_path = pathlib.Path(output_folder) / "video.m3u8"
-    cmd = [
-        "ffmpeg",
-        "-y",
-        "-i",
-        input_file_path,
-        "-vf",
-        f"scale={resolution}",
-        "-c:v",
-        "h264_nvenc",
-        "-b:v",
-        f"{bitrate}k",
-        "-c:a",
-        "aac",
-        "-hls_time",
-        "10",
-        "-hls_playlist_type",
-        "vod",
-        "-hls_segment_filename",
-        str(pathlib.Path(output_folder) / "video_%d.ts"),
-        str(output_path),
-    ]
-    subprocess.run(cmd, check=True)
+    max_bitrate = int(bitrate * 1.07)
+    buffer_size = int(bitrate * 1.5)
+
+    cmd = (
+        ffmpeg.input(input_file_path)
+        .filter("scale_npp", w=-2, h=resolution)
+        .output(
+            output_path,
+            c="h264_nvenc",
+            rc="vbr_hq",
+            cq=19,
+            profile="main",
+            b=f"{bitrate}k",
+            c_aac="aac",
+            hls_time=10,
+            hls_playlist_type="vod",
+            hls_segment_filename=str(pathlib.Path(output_folder) / "video_%d.ts"),
+            maxrate=f"{max_bitrate}k",
+            bufsize=f"{buffer_size}k",
+            g=int(fps * 2),
+            keyint_min=int(fps * 2),
+        )
+        .overwrite_output()
+    )
+
+    ffmpeg.run(cmd)
     print(f"Transcoding to {resolution} ({bitrate}kbps) HLS completed.")
 
 
@@ -44,70 +55,52 @@ def format_time(seconds):
     return str(datetime.timedelta(seconds=seconds))
 
 
-def generate_sprite_and_vtt(input_file_path, output_folder, duration):
-    sprites = 100
-    tile_width = 384
-    tile_height = 216
-    tiles_x = 10
-    tiles_y = 10
-    interval = duration / sprites
+def generate_sprite_and_vtt(
+    input_file_path, output_folder, duration, fps, resolution, bitrate
+):
+    interval = duration / SPRITES
     frame_output_path = os.path.join(output_folder, "frame-%03d.jpg")
     sprite_output_path = os.path.join(output_folder, "sprite.jpg")
     vtt_output_path = os.path.join(output_folder, "sprite.vtt")
     gif_output_path = os.path.join(output_folder, "sprite.gif")
 
     # Generate individual frames
-    cmd = [
-        "ffmpeg",
-        "-i",
-        input_file_path,
-        "-vf",
-        f"fps=1/{interval},scale={tile_width}:{tile_height}",
-        "-frames",
-        str(sprites),
+    ffmpeg.input(input_file_path).output(
         frame_output_path,
-    ]
-    subprocess.run(cmd, check=True)
+        vf=f"scale_npp=w=-2:h={resolution}",
+    ).run(overwrite_output=True)
+    print(f"Individual frames generated for {resolution} ({bitrate}kbps) HLS.")
 
     # Combine individual frames into a sprite
-    cmd = [
-        "ffmpeg",
-        "-i",
-        frame_output_path,
-        "-filter_complex",
-        f"tile={tiles_x}x{tiles_y}",
+    ffmpeg.input(frame_output_path, framerate=fps).output(
         sprite_output_path,
-    ]
-    subprocess.run(cmd, check=True)
+        filter_complex=f"[0:v]tile={TILES_X}x{TILES_Y}:padding=0:margin=0[out]",
+        map="[out]",
+    ).run(overwrite_output=True)
+    print(f"Sprite generated for {resolution} ({bitrate}kbps) HLS.")
 
     # Generate GIF from the frames
-    cmd = [
-        "ffmpeg",
-        "-i",
-        frame_output_path,
-        "-vf",
-        f"fps=2,scale={tile_width}:{tile_height}",
+    ffmpeg.input(sprite_output_path).output(
         gif_output_path,
-    ]
-    subprocess.run(cmd, check=True)
+    ).run(overwrite_output=True)
+    print(f"GIF generated for {resolution} ({bitrate}kbps) HLS.")
 
     # Remove individual frames
-    cmd = ["rm", f"{output_folder}/frame-*.jpg"]
-    subprocess.run(cmd, shell=True, check=True)
+    os.remove(frame_output_path)
 
     # Generate VTT file
     vtt_data = ["WEBVTT"]
     grid_size = 10  # Your grid size
-    for i in range(sprites):
+    for i in range(SPRITES):
         start_time = format_time(i * interval)
         end_time = format_time((i + 1) * interval)
-        x = (i % grid_size) * tile_width  # Modulus operator to loop x
-        y = (i // grid_size) * tile_height  # Increment y after each row
+        x = (i % grid_size) * TILE_WIDTH  # Modulus operator to loop x
+        y = (i // grid_size) * TILE_HEIGHT  # Increment y after each row
         vtt_data.extend(
             [
                 "",
                 f"{start_time} --> {end_time}",
-                f"sprite.jpg#xywh={x},{y},{tile_width},{tile_height}",
+                f"sprite.jpg#xywh={x},{y},{TILE_WIDTH},{TILE_HEIGHT}",
             ]
         )
 
@@ -118,7 +111,6 @@ def generate_sprite_and_vtt(input_file_path, output_folder, duration):
 
 
 def transcode_to_all_resolutions(input_file_path, output_folder, fps, duration):
-    generate_sprite_and_vtt(input_file_path, output_folder, duration)
     input_file_name = pathlib.Path(input_file_path).stem
     input_resolution = get_input_video_resolution(input_file_path)
     resolutions = get_resolutions(fps)
@@ -134,88 +126,81 @@ def transcode_to_all_resolutions(input_file_path, output_folder, fps, duration):
             )
             master_playlist.append(f'{r["name"]}/video.m3u8')
             transcode_video(
-                input_file_path, r["resolution"], r["bitrate"], resolution_folder
+                input_file_path, r["resolution"], r["bitrate"], resolution_folder, fps
             )
-            master_playlist_path = pathlib.Path(output_folder) / "master.m3u8"
-            with open(master_playlist_path, "w") as f:
-                f.write("\n".join(master_playlist))
-            print("Master playlist (master.m3u8) created.")
+            generate_sprite_and_vtt(
+                input_file_path,
+                resolution_folder,
+                duration,
+                fps,
+                r["resolution"],
+                r["bitrate"],
+            )
+
+    master_playlist_path = pathlib.Path(output_folder) / "master.m3u8"
+    with open(master_playlist_path, "w") as f:
+        f.write("\n".join(master_playlist))
+    print("Master playlist (master.m3u8) created.")
 
 
 def get_input_video_resolution(input_file_path):
-    cmd = [
-        "ffprobe",
-        "-v",
-        "error",
-        "-select_streams",
-        "v:0",
-        "-show_entries",
-        "stream=width,height",
-        "-of",
-        "json",
+    probe_data = ffmpeg.probe(
         input_file_path,
-    ]
-    output = subprocess.run(cmd, text=True, capture_output=True, check=True)
-    data = json.loads(output.stdout)
+        v="error",
+        select_streams="v:0",
+        show_entries="stream=width,height",
+    )
     return {
-        "width": data["streams"][0]["width"],
-        "height": data["streams"][0]["height"],
+        "width": probe_data["streams"][0]["width"],
+        "height": probe_data["streams"][0]["height"],
     }
 
 
 def get_video_frame_rate(input_file_path):
-    cmd = [
-        "ffprobe",
-        "-v",
-        "error",
-        "-select_streams",
-        "v",
-        "-of",
-        "default=noprint_wrappers=1:nokey=1",
-        "-show_entries",
-        "stream=r_frame_rate",
-        input_file_path,
-    ]
-    output = subprocess.run(cmd, text=True, capture_output=True, check=True)
-    num, den = output.stdout.split("/")
+    probe_data = ffmpeg.probe(
+        input_file_path, v="error", show_entries="stream=r_frame_rate"
+    )
+    num, den = probe_data["streams"][0]["r_frame_rate"].split("/")
     return int(num) / int(den)
 
 
 def get_resolutions(fps):
     return (
         [
-            {"name": "2160p", "resolution": "3840x2160", "bitrate": 45000},
-            {"name": "1440p", "resolution": "2560x1440", "bitrate": 16000},
-            {"name": "1080p", "resolution": "1920x1080", "bitrate": 8000},
-            {"name": "720p", "resolution": "1280x720", "bitrate": 5000},
-            {"name": "480p", "resolution": "854x480", "bitrate": 2500},
-            {"name": "360p", "resolution": "640x360", "bitrate": 1000},
-            {"name": "240p", "resolution": "426x240", "bitrate": 700},
+            {"name": "2160p", "resolution": "3840x2160", "bitrate": 45000},  # 45 Mbps
+            {"name": "1440p", "resolution": "2560x1440", "bitrate": 16000},  # 16 Mbps
+            {"name": "1080p", "resolution": "1920x1080", "bitrate": 8000},  # 8 Mbps
+            {"name": "720p", "resolution": "1280x720", "bitrate": 5000},  # 5 Mbps
+            {"name": "480p", "resolution": "854x480", "bitrate": 2500},  # 2.5 Mbps
+            {"name": "360p", "resolution": "640x360", "bitrate": 1000},  # 1 Mbps
+            {"name": "240p", "resolution": "426x240", "bitrate": 750},  # 750 Kbps
         ]
         if fps <= 30
         else [
-            {"name": "2160p", "resolution": "3840x2160", "bitrate": 68000},
-            {"name": "1440p", "resolution": "2560x1440", "bitrate": 24000},
-            {"name": "1080p", "resolution": "1920x1080", "bitrate": 12000},
-            {"name": "720p", "resolution": "1280x720", "bitrate": 7500},
-            {"name": "480p", "resolution": "854x480", "bitrate": 4000},
-            {"name": "360p", "resolution": "640x360", "bitrate": 3000},
-            {"name": "240p", "resolution": "426x240", "bitrate": 2250},
+            {"name": "2160p", "resolution": "3840x2160", "bitrate": 68000},  # 68 Mbps
+            {"name": "1440p", "resolution": "2560x1440", "bitrate": 24000},  # 24 Mbps
+            {"name": "1080p", "resolution": "1920x1080", "bitrate": 12000},  # 12 Mbps
+            {"name": "720p", "resolution": "1280x720", "bitrate": 7500},  # 7.5 Mbps
+            {"name": "480p", "resolution": "854x480", "bitrate": 4000},  # 4 Mbps
+            {"name": "360p", "resolution": "640x360", "bitrate": 1500},  # 1.5 Mbps
+            {"name": "240p", "resolution": "426x240", "bitrate": 1000},  # 1 Mbps
         ]
     )
 
 
 def get_video_duration(input_file_path):
-    return float(ffmpeg.probe(input_file_path)["format"]["duration"])
+    probe_data = ffmpeg.probe(
+        input_file_path, v="error", show_entries="format=duration"
+    )
+    return float(probe_data["format"]["duration"])
 
 
 def handler(event):
     print(event)
     file_name = event.file
-    fps = get_video_frame_rate(input_file_path)
-    output_folder = (
-        pathlib.Path(input_file_path).parent / pathlib.Path(input_file_path).stem
-    )
+    fps = get_video_frame_rate(file_name)
+    output_folder = pathlib.Path(file_name).parent / pathlib.Path(file_name).stem
+
     # Download the file from AWS account 1 to /tmp/{event.file}
     s3_client = boto3.client(
         "s3",
@@ -225,7 +210,7 @@ def handler(event):
     s3_client.download_file(os.getenv("AWS_BUCKET_1"), file_name, f"/tmp/{file_name}")
 
     try:
-        input_file_path = "/tmp/" + event.file
+        input_file_path = "/tmp/" + file_name
         duration = get_video_duration(input_file_path)
         transcode_to_all_resolutions(input_file_path, output_folder, fps, duration)
 
