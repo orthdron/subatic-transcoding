@@ -7,13 +7,13 @@ INPUT_FILE="$1"
 OUTPUT_DIR="$2"
 
 # Define the resolutions supported by YouTube, including 4K and 8K
-RESOLUTIONS=("426x240" "640x360" "854x480" "1280x720" "1920x1080" "3840x2160" "7680x4320")
+RESOLUTIONS=("854x480" "1280x720" "1920x1080" "2560x1440" "3840x2160" "7680x4320")
 
 # Define the bit rates for each resolution
-BITRATES=("400k" "800k" "1200k" "2500k" "4500k" "12000k" "24000k")
+BITRATES=("1200k" "2500k" "4500k" "8000k" "12000k" "24000k")
 
 # Define the BANDWIDTH for each resolution
-BANDWIDTHS=("400000" "800000" "1200000" "2500000" "4500000" "12000000" "24000000")
+BANDWIDTHS=("1200000" "2500000" "4500000" "8000000" "12000000" "24000000")
 
 # Function to convert video to HLS format for a given resolution
 function convert_to_hls {
@@ -28,12 +28,8 @@ function convert_to_hls {
   crf_value="23"
 
   # Convert video to HLS format for the resolution
-  # ffmpeg -i "$input_file" -vf "scale=$resolution" -c:v libx264 -preset veryfast -crf "$crf_value" -c:a aac -b:a 128k \
-  # -f hls -hls_time 6 -hls_playlist_type vod -hls_segment_filename "$output_dir/%03d.ts" "$output_dir/stream.m3u8"
-
-  #NVIDIA
-  ffmpeg -i "$input_file" -vf "scale=$resolution" -c:v h264_nvenc -preset:v fast -cq:v 23 -profile:v high -c:a aac -b:a 128k \
--f hls -hls_time 6 -hls_playlist_type vod -hls_segment_filename "$output_dir/%03d.ts" "$output_dir/stream.m3u8"
+  ffmpeg -i "$input_file" -vf "scale=$resolution" -c:v libx264 -preset veryfast -crf "$crf_value" -c:a aac -b:a 256k -ar 48000 \
+  -f hls -hls_time 6 -hls_playlist_type vod -hls_segment_filename "$output_dir/%03d.ts" "$output_dir/stream.m3u8"
 
 
   echo "Video conversion completed for resolution: $resolution"

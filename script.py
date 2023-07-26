@@ -1,15 +1,73 @@
 import os
 import boto3
-import runpod
 import subprocess
 from concurrent.futures import ThreadPoolExecutor
+import time
+from dotenv import load_dotenv
+import json
+import shutil
 
 
-def handler(event):
-    job_input = event["input"]
-    file_name = job_input["file"]
+def main():
+    load_dotenv()
+    sqs_session = boto3.Session(
+        aws_access_key_id=os.getenv("AWS_ACCESS_KEY_ID_1"),
+        aws_secret_access_key=os.getenv("AWS_SECRET_ACCESS_KEY_1"),
+        region_name=os.getenv("AWS_REGION"),
+    )
 
-    output_folder = "/tmp/upload"
+    sqs_client = sqs_session.client("sqs")
+
+    queue_url = os.getenv("AWS_SQS_URL")
+
+    while True:
+        try:
+            response = sqs_client.receive_message(
+                QueueUrl=queue_url, MaxNumberOfMessages=1, WaitTimeSeconds=20
+            )
+            messages = response.get("Messages", [])
+            if not messages:
+                print("No messages in the queue. Waiting...")
+                continue
+
+            message = messages[0]
+
+            message_data = message.get("Body")
+            if message_data:
+                print("Received this message")
+                print(message_data)
+                try:
+                    parsed_message = json.loads(message_data)
+                    records = parsed_message.get("Records", [])
+                    for record in records:
+                        event_name = record.get("eventName")
+                        if event_name == "ObjectCreated:Put":
+                            object_key = record["s3"]["object"]["key"]
+                            if object_key:
+                                try:
+                                    handler(object_key)
+                                except Exception as e:
+                                    print("Error processing message:", str(e))
+                            else:
+                                print(message_data)
+                except Exception as e:
+                    print("Error parsing message:", str(e))
+
+            print("Sleeping for 5 seconds...")
+            time.sleep(5)
+
+            # Delete the processed message from the queue
+            sqs_client.delete_message(
+                QueueUrl=queue_url, ReceiptHandle=message["ReceiptHandle"]
+            )
+
+        except Exception as e:
+            print("Error:", str(e))
+            continue
+
+
+def handler(file_name):
+    output_folder = "./upload"
 
     s3_client = boto3.client(
         "s3",
@@ -17,15 +75,15 @@ def handler(event):
         aws_secret_access_key=os.getenv("AWS_SECRET_ACCESS_KEY_1"),
     )
     s3_client.download_file(
-        os.getenv("AWS_BUCKET_1"), file_name, f"/tmp/{file_name}.video"
+        os.getenv("AWS_BUCKET_1"), file_name, f"./{file_name}.video"
     )
 
     # Invoke bash script here with input = filename and output = output folder
-    bash_script = "/app/script.sh"
+    bash_script = "./script.sh"
 
     final_output = output_folder + "/" + file_name
 
-    subprocess.run([bash_script, f"/tmp/{file_name}.video", final_output], check=True)
+    subprocess.run([bash_script, f"./{file_name}.video", final_output], check=True)
 
     # Upload the output folder to a different s3 compatible storage
     s3_client_2 = boto3.client(
@@ -50,7 +108,8 @@ def handler(event):
         # Wait for all upload tasks to complete
         for future in futures:
             future.result()
-
+    os.remove(f"./{file_name}.video")
+    shutil.rmtree(output_folder)
     return "Processing complete"
 
 
@@ -62,14 +121,5 @@ def upload_to_s3(local_path, relative_path, s3_client):
         print(f"Failed to upload {local_path}. Error: {str(e)}")
 
 
-# input_json = """
-# {
-#     "input": {
-#         "file": "T6s-rRGaT7"
-#     }
-# }
-# """
-
-# result = handler(json.loads(input_json))
-
-runpod.serverless.start({"handler": handler})
+if __name__ == "__main__":
+    main()
