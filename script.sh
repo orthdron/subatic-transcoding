@@ -93,8 +93,8 @@ function generate_sprite_webvtt_and_gif {
   local output_dir="$2"
 
   local num_frames=100
-  local frame_width=384
-  local frame_height=216
+  local frame_width=180
+  local frame_height=101
   local sprite_width=$((num_frames * frame_width))
   local sprite_height=$frame_height
   
@@ -111,8 +111,10 @@ function generate_sprite_webvtt_and_gif {
   ffmpeg -i "$input_file" -vf "fps=$fps,scale=$frame_width:$frame_height" "$output_dir/frame%03d.jpg"
 
   # Concatenate frames into a grid (10x10) to create a sprite image
-  montage "$output_dir/frame*.jpg" -tile 10x10 -geometry +0+0 -background none "$output_dir/sprite.jpg"
-
+  montage "$output_dir/frame*.jpg" -tile 10x10 -geometry +0+0 -background none "$output_dir/sprite_original.jpg"
+  convert "$output_dir/sprite_original.jpg" -quality 80 "$output_dir/sprite.jpg"
+  rm "$output_dir/sprite_original.jpg"
+  
   # Create the WebVTT file with the appropriate content
   local webvtt_file="$output_dir/sprite.vtt"
   echo "WEBVTT" > "$webvtt_file"
