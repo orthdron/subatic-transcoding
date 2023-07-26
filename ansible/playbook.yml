@@ -40,28 +40,29 @@
         src: "script.service.j2"
         dest: "/etc/systemd/system/script.service"
         mode: "0644"
-      notify:
-        - Reload systemd
+        force: yes
+      notify: "systemd setup"
 
     - name: Install Python dependencies
       pip:
         requirements: /opt/requirements.txt
-
-    - name: Reload systemd
-      systemd:
-        daemon_reload: yes
-      notify:
-        - Start the script service
-
-  handlers:
-    - name: Reload systemd
-      systemd:
-        daemon_reload: yes
-      notify:
-        - Start the script service
 
     - name: Start the script service
       systemd:
         name: script.service
         state: started
         enabled: yes
+      register: service_result
+
+  handlers:
+    - name: Reload systemd
+      systemd:
+        daemon_reload: yes
+      listen: "systemd setup"
+
+    - name: Start the script service
+      systemd:
+        name: script.service
+        state: started
+        enabled: yes
+      listen: "systemd setup"
