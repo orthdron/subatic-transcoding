@@ -1,0 +1,11 @@
+[Unit]
+Description=Transcoding service
+
+[Service]
+User=root
+WorkingDirectory=/opt
+ExecStart=/usr/bin/python3 /opt/script.py
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
