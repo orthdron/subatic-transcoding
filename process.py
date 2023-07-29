@@ -293,7 +293,7 @@ def create_adaptive_hls(input_file, output_folder):
                 vf=f"scale={resolution}",
                 vcodec="libx264",
                 preset="veryfast",
-                crf=23,
+                crf=28,
                 acodec="aac",
                 audio_bitrate=abitrate,
                 ar="48000",
@@ -416,7 +416,7 @@ def generate_sprite_webvtt_and_gif(input_file, output_dir):
         os.path.join(output_dir, "short.gif"),
         append_images=short_gif_frames[1:],
         save_all=True,
-        duration=100,  # 10 fps
+        duration=1000,  # 10 fps
         loop=0,
     )
 
@@ -425,7 +425,7 @@ def generate_sprite_webvtt_and_gif(input_file, output_dir):
         os.path.join(output_dir, "long.gif"),
         append_images=images[1:],
         save_all=True,
-        duration=100,  # 10 fps
+        duration=500,  # 10 fps
         loop=0,
     )
     # Delete all 'frame*.jpg' files in the output directory

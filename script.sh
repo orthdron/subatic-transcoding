@@ -7,13 +7,21 @@ INPUT_FILE="$1"
 OUTPUT_DIR="$2"
 
 # Define the resolutions supported by YouTube, including 4K and 8K
-RESOLUTIONS=("854x480" "1280x720" "1920x1080" "2560x1440" "3840x2160" "7680x4320")
+# RESOLUTIONS=("854x480" "1280x720" "1920x1080" "2560x1440" "3840x2160" "7680x4320")
+RESOLUTIONS=("854" "1280" "1920" "2560" "3840" "7680")
 
 # Define the bit rates for each resolution
-BITRATES=("1200k" "2500k" "4500k" "8000k" "12000k" "24000k")
+# BITRATES=("1200k" "2500k" "4500k" "8000k" "12000k" "24000k")
+BITRATES=("1200k" "2500k" "4500k" "8000k" "12000k")
 
 # Define the BANDWIDTH for each resolution
-BANDWIDTHS=("1200000" "2500000" "4500000" "8000000" "12000000" "24000000")
+# BANDWIDTHS=("1200000" "2500000" "4500000" "8000000" "12000000" "24000000")
+BANDWIDTHS=("1200000" "2500000" "4500000" "8000000" "12000000")
+
+ffmpeg -i "$input_file" -vf "scale=w=min(iw\,3840):h=min(ih\,2160),fps=60" \
+  -c:v libx264 -preset medium -crf 23 \
+  -c:a aac -b:a 128k -ar 48000 \
+  "pre.mp4"
 
 # Function to convert video to HLS format for a given resolution
 function convert_to_hls {
@@ -77,6 +85,19 @@ for ((i = 0; i < ${#RESOLUTIONS[@]}; i++)); do
   resolution=${RESOLUTIONS[i]}
   variant_stream=${VARIANT_STREAMS[i]}
 
+  # Get the width and height of the current resolution
+  width=${resolution%x*}
+  height=${resolution#*x}
+
+  # Get the width and height of the maximum resolution
+  max_width=${MAX_RESOLUTION%x*}
+  max_height=${MAX_RESOLUTION#*x}
+
+  # Skip writing variant stream if the resolution is greater than the maximum resolution
+  if (( width > max_width || height > max_height )); then
+    continue
+  fi
+
   # Get the BANDWIDTH for the resolution
   bandwidth=${BANDWIDTHS[i]}
 
@@ -88,13 +109,26 @@ done
 
 echo "Video conversion for all resolutions completed."
 echo "Master playlist generated: $MASTER_FILE"
+
+seconds_to_hhmmss() {
+    local input=$1
+
+    local seconds=$(printf "%.0f" $input)
+    local hours=$((seconds / 3600))
+    local minutes=$(( (seconds % 3600) / 60 ))
+    local seconds=$((seconds % 60))
+
+    printf "%02d:%02d:%02d" $hours $minutes $seconds
+}
+
+
 function generate_sprite_webvtt_and_gif {
   local input_file="$1"
   local output_dir="$2"
 
   local num_frames=100
-  local frame_width=180
-  local frame_height=101
+  local frame_width=384
+  local frame_height=216
   local sprite_width=$((num_frames * frame_width))
   local sprite_height=$frame_height
   
@@ -125,16 +159,8 @@ function generate_sprite_webvtt_and_gif {
     start_time=$(echo "$i * $frame_duration_sec" | bc)
     end_time=$(echo "($i + 1) * $frame_duration_sec" | bc)
 
-    # Format timestamps in HH:MM:SS.sss format
-    start_time_hours=$(echo "scale=0; $start_time/3600" | bc)
-    start_time_minutes=$(echo "scale=0; ($start_time/60)%60" | bc)
-    start_time_seconds=$(echo "scale=3; $start_time%60" | bc)
-    start_time_formatted=$(printf "%02d:%02d:%06.3f" $start_time_hours $start_time_minutes $start_time_seconds)
-
-    end_time_hours=$(echo "scale=0; $end_time/3600" | bc)
-    end_time_minutes=$(echo "scale=0; ($end_time/60)%60" | bc)
-    end_time_seconds=$(echo "scale=3; $end_time%60" | bc)
-    end_time_formatted=$(printf "%02d:%02d:%06.3f" $end_time_hours $end_time_minutes $end_time_seconds)
+    start_time_formatted=$(seconds_to_hhmmss $start_time)
+    end_time_formatted=$(seconds_to_hhmmss $end_time)
 
 
     # Calculate the frame's position in the sprite
