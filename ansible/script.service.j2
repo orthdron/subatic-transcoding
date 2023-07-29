@@ -6,6 +6,7 @@ User=root
 WorkingDirectory=/opt
 ExecStart=/usr/bin/python3 /opt/script.py
 Restart=always
+OOMScoreAdjust=-1000
 
 [Install]
 WantedBy=multi-user.target

@@ -32,7 +32,8 @@
       loop:
         - { src: "../requirements.txt", dest: "requirements.txt", mode: "0644" }
         - { src: "../script.py", dest: "script.py", mode: "0755" }
-        - { src: "../script.sh", dest: "script.sh", mode: "0755" }
+        # - { src: "../script.sh", dest: "script.sh", mode: "0755" }
+        - { src: "../process.py", dest: "process.py", mode: "0755" }
         - { src: "../.env", dest: ".env", mode: "0644" }
 
     - name: Upload script.service to /etc/systemd/system/
