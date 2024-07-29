@@ -1,11 +1,22 @@
 import subprocess
 import time
+import os
 
 
 def loop():
+    # Get the directory of the current script
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+
+    # Construct the full path to process.py
+    process_path = os.path.join(script_dir, "process.py")
+
+    # Path to the Python interpreter within the virtual environment
+    venv_path = "/opt/myenv/bin/python3"
+
     while True:
         try:
-            subprocess.run(["python3", "process.py"])
+            # Run the process.py script using the Python interpreter from the virtual environment
+            subprocess.run([venv_path, process_path], check=True)
         except KeyboardInterrupt:
             print("Loop interrupted by user.")
             break

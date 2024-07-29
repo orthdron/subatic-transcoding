@@ -286,39 +286,40 @@ def create_adaptive_hls(input_file, output_folder):
         resolution = variant["resolution"]
         output_stream = f"{output_folder}/{playlist_name}/stream.m3u8"
         Path(f"{output_folder}/{playlist_name}").mkdir(parents=True, exist_ok=True)
-        if idx == 0:
-            first_stream = output_stream
-            ffmpeg.input(input_file).output(
-                output_stream,
-                vf=f"scale={resolution}",
-                vcodec="libx264",
-                preset="veryfast",
-                crf=28,
-                acodec="aac",
-                audio_bitrate=abitrate,
-                ar="48000",
-                f="hls",
-                hls_time=6,
-                hls_playlist_type="vod",
-                hls_segment_filename=f"{output_folder}/{playlist_name}/%03d.ts",
-            ).run()
-        else:
-            prev_stream = hls_variants[idx - 1]
-            prev_playlist_name = prev_stream["playlist_name"]
-            ffmpeg.input(f"{output_folder}/{prev_playlist_name}/stream.m3u8").output(
-                output_stream,
-                vf=f"scale={resolution}:flags=lanczos",
-                vcodec="libx264",
-                preset="veryfast",
-                crf=23,
-                acodec="aac",
-                audio_bitrate=abitrate,
-                ar="48000",
-                f="hls",
-                hls_time=6,
-                hls_playlist_type="vod",
-                hls_segment_filename=f"{output_folder}/{playlist_name}/%03d.ts",
-            ).run()
+        # if idx == 0:
+        # first_stream = output_stream
+        ffmpeg.input(input_file).output(
+            output_stream,
+            vf=f"scale={resolution}",
+            vcodec="libx264",
+            preset="veryfast",
+            crf=23,
+            acodec="aac",
+            audio_bitrate=abitrate,
+            ar="48000",
+            f="hls",
+            hls_time=6,
+            hls_playlist_type="vod",
+            pix_fmt="yuv420p",
+            hls_segment_filename=f"{output_folder}/{playlist_name}/%03d.ts",
+        ).run()
+        # else:
+        #     prev_stream = hls_variants[idx - 1]
+        #     prev_playlist_name = prev_stream["playlist_name"]
+        #     ffmpeg.input(f"{output_folder}/{prev_playlist_name}/stream.m3u8").output(
+        #         output_stream,
+        #         vf=f"scale={resolution}:flags=lanczos",
+        #         vcodec="libx264",
+        #         preset="veryfast",
+        #         crf=23,
+        #         acodec="aac",
+        #         audio_bitrate=abitrate,
+        #         ar="48000",
+        #         f="hls",
+        #         hls_time=6,
+        #         hls_playlist_type="vod",
+        #         hls_segment_filename=f"{output_folder}/{playlist_name}/%03d.ts",
+        #     ).run()
 
     with open(f"{output_folder}/master.m3u8", "w") as f:
         f.write("#EXTM3U\n")
@@ -333,7 +334,7 @@ def create_adaptive_hls(input_file, output_folder):
             )
             f.write(f"{playlist_name}/stream.m3u8\n")
 
-    generate_sprite_webvtt_and_gif(first_stream, output_folder)
+    generate_sprite_webvtt_and_gif(input_file, output_folder)
 
 
 def seconds_to_hhmmss(input):
@@ -349,8 +350,6 @@ def generate_sprite_webvtt_and_gif(input_file, output_dir):
     num_frames = 100
     frame_width = 384
     frame_height = 216
-    sprite_width = num_frames * frame_width
-    sprite_height = frame_height
 
     # Get the total duration of the video in seconds
     probe = ffmpeg.probe(input_file)

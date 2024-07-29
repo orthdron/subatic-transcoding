@@ -3,8 +3,8 @@ Description=Transcoding service
 
 [Service]
 User=root
-WorkingDirectory=/opt
-ExecStart=/usr/bin/python3 /opt/script.py
+WorkingDirectory=/root
+ExecStart=/opt/myenv/bin/python3 /opt/script.py
 Restart=always
 OOMScoreAdjust=-1000
 
