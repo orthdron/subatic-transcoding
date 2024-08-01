@@ -13,9 +13,14 @@ def loop():
     # Path to the Python interpreter within the virtual environment
     venv_path = "/opt/myenv/bin/python3"
 
+    # Check if the virtual environment's Python interpreter exists
+    if not os.path.isfile(venv_path):
+        print("Virtual environment not found. Using system Python.")
+        venv_path = "python3"
+
     while True:
         try:
-            # Run the process.py script using the Python interpreter from the virtual environment
+            # Run the process.py script using the determined Python interpreter
             subprocess.run([venv_path, process_path], check=True)
         except KeyboardInterrupt:
             print("Loop interrupted by user.")
