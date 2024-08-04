@@ -428,7 +428,7 @@ def create_gifs(output_dir, num_frames):
         os.path.join(output_dir, "short.gif"),
         append_images=short_gif_frames[1:],
         save_all=True,
-        duration=1000,
+        duration=5000,
         loop=0,
     )
 
