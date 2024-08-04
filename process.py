@@ -440,6 +440,10 @@ def create_gifs(output_dir, num_frames):
         loop=0,
     )
 
+    middle_index = len(images) // 2
+    middle_image = images[middle_index]
+    middle_image.save(os.path.join(output_dir, "poster.jpg"))
+
 
 def seconds_to_hhmmss(input_seconds):
     seconds = round(Decimal(input_seconds))
