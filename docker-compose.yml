@@ -1,0 +1,17 @@
+services:
+  subatic-transcoder:
+    image: ghcr.io/orthdron/subatic-transcoder:latest
+    container_name: subatic-transcoder
+    environment:
+      - AWS_ACCESS_KEY_ID_1=       # Your AWS access key for transcoding
+      - AWS_SECRET_ACCESS_KEY_1=   # Your AWS secret key for transcoding
+      - AWS_BUCKET_1=              # The S3 bucket used for transcoding
+      - AWS_SQS_URL=               # URL of the SQS queue for transcoding
+      - AWS_REGION=                # AWS region for transcoding resources
+      - AWS_ACCESS_KEY_ID_2=       # Your Cloudflare access key
+      - AWS_SECRET_ACCESS_KEY_2=   # Your Cloudflare secret key
+      - AWS_BUCKET_2=              # The R2 bucket used for final uploads
+      - AWS_ENDPOINT_2=            # Endpoint for accessing the R2 bucket
+      - WEBHOOK_URL=               # URL for webhook notifications (where Subatic is deployed)
+      - WEBHOOK_TOKEN=             # Random token for webhook notifications, shared between this and transcoder
+    restart: unless-stopped

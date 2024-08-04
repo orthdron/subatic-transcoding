@@ -1,0 +1,4 @@
+.vscode
+.env
+.DS_Store
+ansible/inventory_file

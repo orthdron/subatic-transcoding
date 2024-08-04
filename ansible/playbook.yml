@@ -1,0 +1,81 @@
+---
+- name: Setup transcoding servers
+  hosts: transcoding_servers
+  become: true
+  gather_facts: no
+  vars:
+    ansible_ssh_common_args: "-o StrictHostKeyChecking=no"
+  tasks:
+    - name: Update apt cache
+      apt:
+        update_cache: yes
+
+    - name: Upgrade all packages
+      apt:
+        upgrade: safe
+        autoremove: yes
+
+    - name: Install required packages (python3, pip, ffmpeg, imagemagick)
+      apt:
+        name:
+          - python3-full
+          - python3-pip
+          - ffmpeg
+          - imagemagick
+          - python3-venv
+        state: present
+
+    - name: Stop the script service
+      systemd:
+        name: script.service
+        state: stopped
+        enabled: no
+      ignore_errors: yes
+
+    - name: Transfer files to /opt folder
+      copy:
+        src: "../{{ item.src }}"
+        dest: "/opt/{{ item.dest }}"
+        mode: "{{ item.mode }}"
+      loop:
+        - { src: "requirements.txt", dest: "requirements.txt", mode: "0644" }
+        - { src: "script.py", dest: "script.py", mode: "0755" }
+        - { src: "process.py", dest: "process.py", mode: "0755" }
+        - { src: ".env", dest: ".env", mode: "0644" }
+
+    - name: Upload script.service to /etc/systemd/system/
+      copy:
+        src: "script.service.j2"
+        dest: "/etc/systemd/system/script.service"
+        mode: "0644"
+        force: yes
+      notify: "systemd setup"
+
+    - name: Create a virtual environment
+      command: python3 -m venv /opt/myenv
+      become: true
+
+    - name: Install Python dependencies
+      pip:
+        requirements: /opt/requirements.txt
+        virtualenv: /opt/myenv
+
+    - name: Start the script service
+      systemd:
+        name: script.service
+        state: started
+        enabled: yes
+      register: service_result
+
+  handlers:
+    - name: Reload systemd
+      systemd:
+        daemon_reload: yes
+      listen: "systemd setup"
+
+    - name: Start the script service
+      systemd:
+        name: script.service
+        state: started
+        enabled: yes
+      listen: "systemd setup"
