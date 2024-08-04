@@ -32,8 +32,8 @@ jobs:
           context: .
           push: true
           tags: |
-            ghcr.io/${{ github.repository_owner }}/your-image-name:latest
-            ghcr.io/${{ github.repository_owner }}/your-image-name:${{ github.event.release.tag_name }}
+            ghcr.io/${{ github.repository_owner }}/subatic-transcoding:latest
+            ghcr.io/${{ github.repository_owner }}/subatic-transcoding:${{ github.event.release.tag_name }}
 
       - name: Logout from GitHub Container Registry
         run: docker logout ghcr.io
