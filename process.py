@@ -8,12 +8,14 @@ import json
 from decimal import Decimal
 import logging
 import requests
-
+from botocore.exceptions import ClientError
 import boto3
 import ffmpeg
 from moviepy.editor import VideoFileClip
 from PIL import Image
 import glob
+import subprocess
+
 
 # Set up logging
 logging.basicConfig(
@@ -22,7 +24,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-def send_webhook(video_id, status):
+def send_webhook(video_id, status, duration=0):
     webhook_url = os.getenv("WEBHOOK_URL")
     webhook_token = os.getenv("WEBHOOK_TOKEN")
 
@@ -35,13 +37,14 @@ def send_webhook(video_id, status):
 
     webhook_url = f"{webhook_url}/api/video/updateStatus"
 
-    payload = {"id": video_id, "status": status, "token": webhook_token}
+    payload = {"id": video_id, "status": status, "duration": duration}
+    headers = {"X-Webhook-Token": webhook_token}
 
     try:
-        response = requests.post(webhook_url, json=payload)
+        response = requests.post(webhook_url, json=payload, headers=headers)
         response.raise_for_status()
         logger.info(
-            f"Webhook sent successfully for video {video_id} with status {status}"
+            f"Webhook sent successfully for video {video_id} with status {status} and duration {duration}"
         )
     except requests.RequestException as e:
         logger.error(f"Failed to send webhook for video {video_id}: {str(e)}")
@@ -49,25 +52,31 @@ def send_webhook(video_id, status):
 
 def main():
     load_dotenv()
-    sqs_session = boto3.Session(
-        aws_access_key_id=os.getenv("AWS_ACCESS_KEY_ID_1"),
-        aws_secret_access_key=os.getenv("AWS_SECRET_ACCESS_KEY_1"),
-        region_name=os.getenv("AWS_REGION"),
-    )
+    sqs_enabled = os.getenv("SQS_ENABLED", "false").lower() == "true"
 
-    sqs_client = sqs_session.client("sqs")
-    queue_url = os.getenv("AWS_SQS_URL")
+    if sqs_enabled:
+        sqs_session = boto3.Session(
+            aws_access_key_id=os.getenv("AWS_ACCESS_KEY_ID"),
+            aws_secret_access_key=os.getenv("AWS_SECRET_ACCESS_KEY"),
+            region_name=os.getenv("AWS_REGION"),
+            endpoint_url=os.getenv("AWS_ENDPOINT"),
+        )
+        sqs_client = sqs_session.client("sqs")
+        queue_url = os.getenv("AWS_SQS_URL")
 
     while True:
         try:
-            process_message(sqs_client, queue_url)
+            if sqs_enabled:
+                process_sqs_message(sqs_client, queue_url)
+            else:
+                process_webhook_message()
         except Exception as e:
             logger.error(f"Error in main loop: {str(e)}")
         logger.info("Sleeping for 5 seconds...")
         time.sleep(5)
 
 
-def process_message(sqs_client, queue_url):
+def process_sqs_message(sqs_client, queue_url):
     try:
         response = sqs_client.receive_message(
             QueueUrl=queue_url, MaxNumberOfMessages=1, WaitTimeSeconds=20
@@ -105,6 +114,38 @@ def process_message(sqs_client, queue_url):
         )
     except Exception as e:
         logger.error(f"Error processing message: {str(e)}")
+
+
+def process_webhook_message():
+    webhook_url = os.getenv("WEBHOOK_URL")
+    webhook_token = os.getenv("WEBHOOK_TOKEN")
+    if not webhook_url or not webhook_token:
+        logger.error("WEBHOOK_URL or WEBHOOK_TOKEN environment variable is missing")
+        return
+
+    if webhook_url.endswith("/"):
+        webhook_url = webhook_url[:-1]
+
+    endpoint = f"{webhook_url}/api/video/getNext"
+    headers = {"X-Webhook-Token": webhook_token}
+
+    try:
+        response = requests.get(endpoint, headers=headers)
+        response.raise_for_status()
+        data = response.json()
+
+        if "id" in data:
+            video_id = data["id"]
+            try:
+                # handler(f"uploads/{video_id}")
+                handler(video_id)
+            except Exception as e:
+                logger.error(f"Error processing video: {str(e)}")
+                send_webhook(video_id, "FAILED")
+        else:
+            logger.info("No video to process. Waiting...")
+    except requests.RequestException as e:
+        logger.error(f"Failed to get next video from webhook: {str(e)}")
 
 
 def setup(file_name):
@@ -145,10 +186,6 @@ def is_video_file_fine(input_file):
     except Exception as e:
         logger.error(f"Error checking video file: {e}")
         return False
-
-
-import subprocess
-import json
 
 
 def get_video_info(filename):
@@ -211,48 +248,6 @@ def get_video_info(filename):
             f"Error getting video info for '{filename}': {str(e)}", exc_info=True
         )
         raise
-
-
-def get_folder_size(folder_path):
-    total_size = 0
-    for dirpath, dirnames, filenames in os.walk(folder_path):
-        for f in filenames:
-            fp = os.path.join(dirpath, f)
-            total_size += os.path.getsize(fp)
-    return total_size
-
-
-def calculate_bitrate(folder_size, duration):
-    # Convert folder size to bits and duration to seconds
-    size_in_bits = folder_size * 8
-    bitrate = size_in_bits / duration
-    # Convert to kbps and round to nearest 100
-    return round(bitrate / 1000 / 100) * 100
-
-
-import os
-import time
-import shutil
-from pathlib import Path
-from concurrent.futures import ThreadPoolExecutor
-from dotenv import load_dotenv
-import json
-from decimal import Decimal
-import logging
-
-import boto3
-import ffmpeg
-from moviepy.editor import VideoFileClip
-from PIL import Image
-import glob
-
-# Set up logging
-logging.basicConfig(
-    level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
-)
-logger = logging.getLogger(__name__)
-
-# ... [previous code remains the same] ...
 
 
 def get_folder_size(folder_path):
@@ -353,6 +348,8 @@ def create_adaptive_hls(input_file, output_folder):
 
     create_master_playlist(output_folder, hls_variants)
     generate_sprite_webvtt_and_gif(input_file, output_folder)
+
+    return video_info["duration"]
 
 
 def create_master_playlist(output_folder, hls_variants):
@@ -462,10 +459,10 @@ def upload_to_s3(local_path, relative_path, s3_client):
 def delete_file_from_s3(file_name):
     s3_client = boto3.client(
         "s3",
-        aws_access_key_id=os.getenv("AWS_ACCESS_KEY_ID_1"),
-        aws_secret_access_key=os.getenv("AWS_SECRET_ACCESS_KEY_1"),
+        aws_access_key_id=os.getenv("AWS_ACCESS_KEY_ID"),
+        aws_secret_access_key=os.getenv("AWS_SECRET_ACCESS_KEY"),
     )
-    bucket_name = os.getenv("AWS_BUCKET_1")
+    bucket_name = os.getenv("AWS_BUCKET")
     try:
         s3_client.delete_object(Bucket=bucket_name, Key=file_name)
         logger.info(f"File {file_name} has been deleted from S3 bucket {bucket_name}.")
@@ -477,13 +474,21 @@ def handler(file_name):
     try:
         setup(file_name)
         raw_file_path = f"./upload/{file_name}/{file_name}"
-
+        # Initialize the S3 client
         s3_client = boto3.client(
             "s3",
-            aws_access_key_id=os.getenv("AWS_ACCESS_KEY_ID_1"),
-            aws_secret_access_key=os.getenv("AWS_SECRET_ACCESS_KEY_1"),
+            aws_access_key_id=os.getenv("AWS_ACCESS_KEY_ID"),
+            aws_secret_access_key=os.getenv("AWS_SECRET_ACCESS_KEY"),
+            endpoint_url=os.getenv("AWS_ENDPOINT"),
         )
-        s3_client.download_file(os.getenv("AWS_BUCKET_1"), file_name, raw_file_path)
+
+        logger.info(f"Trying to download {file_name} to {raw_file_path}")
+
+        # Attempt to download the file from S3
+        s3_client.download_file(
+            os.getenv("AWS_BUCKET"), f"uploads/{file_name}", raw_file_path
+        )
+        logger.info(f"Downloaded {file_name} to {raw_file_path}")
 
         if not is_video_file_fine(raw_file_path):
             raise ValueError(f"Broken video: {file_name}")
@@ -499,10 +504,22 @@ def handler(file_name):
         log_time_taken(start)
 
         send_webhook(file_name, "DONE")
-        s3_client.delete_object(Bucket=os.getenv("AWS_BUCKET_1"), Key=file_name)
+
+        # Delete the file from S3
+        s3_client.delete_object(Bucket=os.getenv("AWS_BUCKET"), Key=file_name)
         logger.info(f"File '{file_name}' deleted from main account.")
+
+    except FileNotFoundError as fnf_error:
+        logger.error(f"File not found: {fnf_error}")
+        send_webhook(file_name, "FAILED")
+    except ClientError as client_error:
+        logger.error(f"AWS Client error: {client_error}")
+        send_webhook(file_name, "FAILED")
+    except ValueError as value_error:
+        logger.error(f"Value error: {value_error}")
+        send_webhook(file_name, "FAILED")
     except Exception as e:
-        logger.error(f"Error in handler: {str(e)}")
+        logger.error(f"Unexpected error in handler: {str(e)}")
         send_webhook(file_name, "FAILED")
     finally:
         cleanup()

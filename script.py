@@ -11,7 +11,7 @@ def loop():
     process_path = os.path.join(script_dir, "process.py")
 
     # Path to the Python interpreter within the virtual environment
-    venv_path = "/opt/myenv/bin/python3"
+    venv_path = ".venv/bin/python3"
 
     # Check if the virtual environment's Python interpreter exists
     if not os.path.isfile(venv_path):
