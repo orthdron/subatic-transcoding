@@ -1,8 +1,6 @@
 boto3
 python-dotenv
 moviepy
-opencv-python
-vidgear
 ffmpeg
 ffmpeg-python
 Pillow

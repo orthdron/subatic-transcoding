@@ -11,8 +11,8 @@ COPY requirements.txt ./
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy the Python scripts into the container
-COPY process.py .
-COPY script.py .
+COPY main.py .
+COPY src/ .
 
-# Run one of the scripts by default
-CMD ["python", "./script.py"]
+# Run main.py
+CMD ["python", "./main.py"]

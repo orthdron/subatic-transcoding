@@ -51,22 +51,27 @@ To deploy Subatic Transcoder using Ansible, follow these steps:
 A sample environment file is provided below. Update it with your specific details and save it as `.env` in the root directory of your project.
 
 ```plaintext
-# AWS Configuration
-AWS_ACCESS_KEY_ID_1=             # Your AWS access key for transcoding
-AWS_SECRET_ACCESS_KEY_1=         # Your AWS secret key for transcoding
-AWS_BUCKET_1=                    # The S3 bucket used for transcoding
-AWS_SQS_URL=                     # URL of the SQS queue for transcoding
-AWS_REGION=                      # AWS region for transcoding resources
+# Enable or disable SQS
+SQS_ENABLED=false
+SQS_URL=YOUR_SQS_URL
 
-# Cloudflare Configuration
-AWS_ACCESS_KEY_ID_2=             # Your Cloudflare access key
-AWS_SECRET_ACCESS_KEY_2=         # Your Cloudflare secret key
-AWS_BUCKET_2=                    # The R2 bucket used for final uploads
-AWS_ENDPOINT_2=                  # Endpoint for accessing the R2 bucket
+# Download bucket configuration
+DOWNLOAD_S3_ENDPOINT=http://localhost:9000
+DOWNLOAD_S3_ACCESS_KEY_ID=YOUR_DOWNLOAD_S3_ACCESS_KEY_ID
+DOWNLOAD_S3_SECRET_ACCESS_KEY=YOUR_DOWNLOAD_S3_SECRET_ACCESS_KEY
+DOWNLOAD_S3_REGION=YOUR_DOWNLOAD_S3_REGION
+DOWNLOAD_S3_BUCKET=YOUR_DOWNLOAD_BUCKET_NAME
 
-# Webhook Configuration
-WEBHOOK_URL=                     # URL for webhook notifications (where Subatic is deployed)
-WEBHOOK_TOKEN=                   # Random token for webhook notifications, shared between this and transcoder
+# Upload bucket configuration: Can be same as download if public
+UPLOAD_S3_ACCESS_KEY_ID=YOUR_UPLOAD_S3_ACCESS_KEY_ID
+UPLOAD_S3_SECRET_ACCESS_KEY=YOUR_UPLOAD_S3_SECRET_ACCESS_KEY
+UPLOAD_S3_REGION=YOUR_UPLOAD_S3_REGION
+UPLOAD_S3_BUCKET=YOUR_UPLOAD_BUCKET_NAME
+UPLOAD_S3_ENDPOINT=YOUR_UPLOAD_S3_ENDPOINT
+
+# Webhook configuration
+WEBHOOK_URL=http://localhost:3000/
+WEBHOOK_TOKEN=YOUR_WEBHOOK_TOKEN
 ```
 
 More detailed documentation will be available soon. For any bugs, please report them using GitHub Issues.

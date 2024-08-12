@@ -39,8 +39,8 @@
         mode: "{{ item.mode }}"
       loop:
         - { src: "requirements.txt", dest: "requirements.txt", mode: "0644" }
-        - { src: "script.py", dest: "script.py", mode: "0755" }
-        - { src: "process.py", dest: "process.py", mode: "0755" }
+        - { src: "main.py", dest: "main.py", mode: "0755" }
+        - { src: "src/", dest: "src/", mode: "0755" }
         - { src: ".env", dest: ".env", mode: "0644" }
 
     - name: Upload script.service to /etc/systemd/system/
