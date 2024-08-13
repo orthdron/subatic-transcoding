@@ -1,5 +1,5 @@
 # First stage: Build ffmpeg
-FROM jrottenberg/ffmpeg:latest AS ffmpeg
+FROM linuxserver/ffmpeg:latest AS ffmpeg
 
 # Second stage: Python application
 FROM python:3.12-slim
