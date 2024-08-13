@@ -1,4 +1,3 @@
-import os
 from dotenv import load_dotenv
 from src.config import load_config
 from src.process import process_webhook_message

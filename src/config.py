@@ -13,7 +13,9 @@ class Config:
         self.s3_rawfiles_bucket = os.getenv("RAWFILES_S3_BUCKET")
 
         self.s3_processed_access_key_id = os.getenv("PROCESSED_S3_ACCESS_KEY_ID")
-        self.s3_processed_secret_access_key = os.getenv("PROCESSED_S3_SECRET_ACCESS_KEY")
+        self.s3_processed_secret_access_key = os.getenv(
+            "PROCESSED_S3_SECRET_ACCESS_KEY"
+        )
         self.s3_processed_region = os.getenv("PROCESSED_S3_REGION", "auto")
         self.s3_processed_endpoint = os.getenv("PROCESSED_S3_ENDPOINT")
         self.s3_processed_bucket = os.getenv("PROCESSED_S3_BUCKET")

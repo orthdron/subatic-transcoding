@@ -13,14 +13,15 @@ def upload_to_s3(local_path, relative_path, s3_client):
     except Exception as e:
         logger.error(f"Failed to upload {local_path} to S3. Error: {str(e)}")
         raise
-    
+
+
 def upload_everything():
     s3_client = boto3.client(
         "s3",
         aws_access_key_id=config.s3_processed_access_key_id,
         aws_secret_access_key=config.s3_processed_secret_access_key,
         endpoint_url=config.s3_processed_endpoint,
-        region_name=config.s3_processed_region
+        region_name=config.s3_processed_region,
     )
 
     with ThreadPoolExecutor(max_workers=10) as executor:

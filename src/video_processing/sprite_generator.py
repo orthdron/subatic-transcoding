@@ -27,7 +27,7 @@ def generate_sprite_and_vtt(input_file, output_dir):
     )
 
     create_gifs(output_dir, num_frames)
-    
+
     for filename in glob.glob(os.path.join(output_dir, "frame*.jpg")):
         os.remove(filename)
 

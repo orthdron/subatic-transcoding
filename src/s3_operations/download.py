@@ -13,13 +13,12 @@ def download_from_s3(file_name, local_path):
         endpoint_url=config.s3_rawfiles_endpoint,
     )
     try:
-        s3_client.download_file(
-            config.s3_rawfiles_bucket, file_name, local_path
-        )
+        s3_client.download_file(config.s3_rawfiles_bucket, file_name, local_path)
         logger.info(f"Downloaded {file_name} to {local_path}")
     except Exception as e:
         logger.error(f"Failed to download {file_name} from S3: {str(e)}")
         raise
+
 
 def delete_file_from_s3(file_name):
     s3_client = boto3.client(

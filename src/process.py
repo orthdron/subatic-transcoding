@@ -15,6 +15,7 @@ from src.config import load_config
 
 config = load_config()
 
+
 def process_webhook_message():
     if not config.webhook_url or not config.webhook_token:
         logger.error("WEBHOOK_URL or WEBHOOK_TOKEN environment variable is missing")

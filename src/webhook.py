@@ -24,4 +24,3 @@ def send_webhook(video_id, status, duration=0):
         )
     except requests.RequestException as e:
         logger.error(f"Failed to send webhook for video {video_id}: {str(e)}")
-
