@@ -9,7 +9,7 @@ config = load_config()
 
 def upload_to_s3(local_path, relative_path, s3_client):
     try:
-        s3_client.upload_file(local_path, config.s3_upload_bucket, relative_path)
+        s3_client.upload_file(local_path, config.s3_processed_bucket, relative_path)
     except Exception as e:
         logger.error(f"Failed to upload {local_path} to S3. Error: {str(e)}")
         raise
