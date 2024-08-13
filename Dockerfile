@@ -1,5 +1,12 @@
-# Use the official Python image from the Docker Hub
+# First stage: Build ffmpeg
+FROM jrottenberg/ffmpeg:latest AS ffmpeg
+
+# Second stage: Python application
 FROM python:3.12-slim
+
+# Copy ffmpeg binaries from the first stage
+COPY --from=ffmpeg /usr/local/bin/ffmpeg /usr/local/bin/
+COPY --from=ffmpeg /usr/local/bin/ffprobe /usr/local/bin/
 
 # Set the working directory in the container
 WORKDIR /app
