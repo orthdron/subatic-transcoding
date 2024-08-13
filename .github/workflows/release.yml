@@ -1,4 +1,4 @@
-name: Build and Push Docker Image
+name: Build and Push Cross-Platform Docker Image
 
 on:
   release:
@@ -34,6 +34,7 @@ jobs:
           tags: |
             ghcr.io/${{ github.repository_owner }}/subatic-transcoding:latest
             ghcr.io/${{ github.repository_owner }}/subatic-transcoding:${{ github.event.release.tag_name }}
+          platforms: linux/amd64,linux/arm64
 
       - name: Logout from GitHub Container Registry
         run: docker logout ghcr.io
