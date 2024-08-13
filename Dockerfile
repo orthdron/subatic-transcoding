@@ -1,12 +1,10 @@
-# First stage: Build ffmpeg
-FROM linuxserver/ffmpeg:latest AS ffmpeg
-
-# Second stage: Python application
+# Use the official Python image from the Docker Hub
 FROM python:3.12-slim
 
-# Copy ffmpeg binaries from the first stage
-COPY --from=ffmpeg /usr/local/bin/ffmpeg /usr/local/bin/
-COPY --from=ffmpeg /usr/local/bin/ffprobe /usr/local/bin/
+# Install ffmpeg
+RUN apt-get update && \
+    apt-get install -y ffmpeg && \
+    rm -rf /var/lib/apt/lists/*
 
 # Set the working directory in the container
 WORKDIR /app
