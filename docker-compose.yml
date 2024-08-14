@@ -1,9 +1,11 @@
 services:
   subatic-transcoder:
-    image: ghcr.io/orthdron/subatic-transcoder:latest
+    # image: ghcr.io/orthdron/subatic-transcoder:latest
+    image: ghcr.io/orthdron/subatic-transcoder:latest-amd64
+    # build: .
     container_name: subatic-transcoder
     environment:
-      - SQS_ENABLED=false
+      - ENABLE_SQS=false
       - SQS_URL=YOUR_SQS_URL
 
       # Download bucket configuration
