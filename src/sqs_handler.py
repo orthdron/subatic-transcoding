@@ -1,4 +1,5 @@
 import json
+import os
 from src.logging_config import logger
 from src.config import load_config
 from src.process import process_video
@@ -27,11 +28,11 @@ def process_sqs_message(sqs_client, queue_url):
         records = parsed_message.get("Records", [])
         for record in records:
             event_name = record.get("eventName")
-            if event_name == "ObjectCreated:Put":
+            if event_name == "ObjectCreated:Put" or event_name == "ObjectCreated:CompleteMultipartUpload":
                 object_key = record["s3"]["object"]["key"]
                 if object_key:
                     try:
-                        process_video(object_key)
+                        process_video(os.path.basename(object_key))
                         pass
                     except Exception as e:
                         logger.error(f"Error processing message: {str(e)}")
