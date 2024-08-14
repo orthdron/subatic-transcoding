@@ -30,12 +30,15 @@ class Config:
             self.queue_url = self.aws_sqs_url
 
     def _create_sqs_client(self):
-        return boto3.Session(
+        session = boto3.Session(
             aws_access_key_id=self.s3_rawfiles_access_key_id,
             aws_secret_access_key=self.s3_rawfiles_secret_access_key,
             region_name=self.s3_rawfiles_region,
-            endpoint_url=self.s3_rawfiles_endpoint,
-        ).client("sqs")
+        )
+        return session.client(
+                "sqs",
+                endpoint_url=self.aws_sqs_url,
+        )
 
 
 def load_config():
