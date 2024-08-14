@@ -52,7 +52,7 @@ A sample environment file is provided below. Update it with your specific detail
 
 ```plaintext
 # Enable or disable SQS
-SQS_ENABLED=false
+ENABLE_SQS=false
 SQS_URL=YOUR_SQS_URL
 
 # Download bucket configuration
