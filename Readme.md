@@ -1,4 +1,9 @@
-![Subatic](https://github.com/orthdron/subatic/raw/main/public/logo.webp)
+<p align="center">
+       <a href="https://subatic.com">
+          <img src="https://github.com/orthdron/subatic/raw/main/docs/logo/combined/png/transparent.png"/>
+      </a>
+</p>
+
 
 ## Subatic Transcoder
 
