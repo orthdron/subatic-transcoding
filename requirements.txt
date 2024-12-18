@@ -1,6 +1,6 @@
 boto3
 python-dotenv
-moviepy==1.0.3
+moviepy==2.1.1
 ffmpeg
 ffmpeg-python
 Pillow
