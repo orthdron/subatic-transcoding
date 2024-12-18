@@ -4,3 +4,4 @@ moviepy
 ffmpeg
 ffmpeg-python
 Pillow
+requests
