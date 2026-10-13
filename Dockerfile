@@ -1,5 +1,5 @@
 # Use the official Python image from the Docker Hub
-FROM python:3.14-slim
+FROM python:3.15-slim
 
 # Install ffmpeg
 RUN apt-get update && \
