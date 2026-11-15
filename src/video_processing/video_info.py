@@ -5,6 +5,9 @@ from dataclasses import dataclass
 from src.logging_config import logger
 
 
+MAX_PLAUSIBLE_FPS = 240
+
+
 @dataclass(frozen=True)
 class VideoInfo:
     """What the pipeline needs to know about a source file.
@@ -80,10 +83,17 @@ def parse_probe(data):
     if duration <= 0:
         raise ValueError("Could not determine video duration")
 
-    fps = (
-        _parse_ratio(video.get("avg_frame_rate"))
-        or _parse_ratio(video.get("r_frame_rate"))
-        or 30.0
+    # avg_frame_rate is right for variable-frame-rate phone video, where
+    # r_frame_rate can be a timebase like 90000. But WebM/Matroska without a
+    # frame count often reports avg_frame_rate as its 1 ms timebase (1000/1),
+    # which would mark a 30 fps file as high frame rate.
+    fps = next(
+        (
+            rate
+            for rate in (_parse_ratio(video.get("avg_frame_rate")), _parse_ratio(video.get("r_frame_rate")))
+            if rate and rate <= MAX_PLAUSIBLE_FPS
+        ),
+        30.0,
     )
 
     return VideoInfo(

@@ -57,6 +57,19 @@ class ParseProbeTest(unittest.TestCase):
         info = parse_probe(probe({"avg_frame_rate": "0/0", "r_frame_rate": "60000/1001"}))
         self.assertAlmostEqual(info.fps, 59.94, places=2)
 
+    def test_webm_timebase_is_not_a_frame_rate(self):
+        # Matroska often reports its 1 ms timebase as avg_frame_rate.
+        info = parse_probe(probe({"avg_frame_rate": "1000/1", "r_frame_rate": "30000/1001"}))
+        self.assertAlmostEqual(info.fps, 29.97, places=2)
+
+    def test_variable_frame_rate_keeps_average(self):
+        info = parse_probe(probe({"avg_frame_rate": "2997/100", "r_frame_rate": "90000/1"}))
+        self.assertAlmostEqual(info.fps, 29.97, places=2)
+
+    def test_no_plausible_frame_rate_assumes_30(self):
+        info = parse_probe(probe({"avg_frame_rate": "1000/1", "r_frame_rate": "90000/1"}))
+        self.assertEqual(info.fps, 30.0)
+
 
 if __name__ == "__main__":
     unittest.main()
