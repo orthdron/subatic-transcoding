@@ -25,8 +25,8 @@ class FakeBucket:
         bucket = self
 
         class Paginator:
-            def paginate(self, Bucket):
-                yield {"Contents": [{"Key": k} for k in sorted(bucket.objects)]}
+            def paginate(self, Bucket, Prefix=""):
+                yield {"Contents": [{"Key": k} for k in sorted(bucket.objects) if k.startswith(Prefix)]}
 
         return Paginator()
 
