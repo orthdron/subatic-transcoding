@@ -4,3 +4,4 @@
 ansible/inventory_file
 .venv
 __pycache__
+backfill-work

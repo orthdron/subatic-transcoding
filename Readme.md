@@ -91,6 +91,17 @@ For each upload `uploads/<id>` in the raw bucket, the transcoder writes to `<id>
 
 The raw upload is deleted only after the web app has accepted the `DONE` status, so a failed status update never loses the source.
 
+## Upgrading videos from the old pipeline
+
+The pipeline before the HLS rework also uploaded each raw upload into the processed bucket (at `<id>/<id>`), next to five renditions with mismatched segment cuts and GIF previews. `src/backfill.py` re-runs the current pipeline on that file:
+
+```sh
+python -m src.backfill --env-file .env.production            # dry run: list videos to upgrade
+python -m src.backfill --env-file .env.production --apply    # all of them, or pass ids
+```
+
+New renditions go under `<id>/v2/` so no segment URL is reused (old segments may still be cached by the CDN and by browsers). `master.m3u8`, `sprite.*` and `poster.jpg` are replaced in place after copies are kept in `<id>/legacy/`, and `short.webp`/`long.mp4` are added. Old files are not deleted, so viewers holding a cached old `master.m3u8` keep playing. Once those caches have expired, `--prune --apply` deletes the old renditions, GIFs and `legacy/` copies. The raw file at `<id>/<id>` is never touched. Run it from a separate checkout, not inside a running worker's container.
+
 ## Development
 
 The tests use only the standard library. The pipeline tests also need `ffmpeg` and `ffprobe` on the `PATH` (they are skipped otherwise):

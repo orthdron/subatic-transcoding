@@ -30,13 +30,14 @@ H264_PROFILE_IDC = {
 }
 
 
-def create_adaptive_hls(input_file, output_dir, frames_dir, info):
+def create_adaptive_hls(input_file, output_dir, frames_dir, info, rendition_root=""):
     """Encode every rendition plus the thumbnail frames in one ffmpeg run.
 
     The source is decoded once and split, instead of once per rendition.
-    Writes <output_dir>/<rendition>/stream.m3u8 + segments, thumbnail JPEGs
-    to frames_dir, and <output_dir>/master.m3u8 with measured bandwidths.
-    Returns the renditions, smallest first.
+    Writes <output_dir>/[<rendition_root>/]<rendition>/stream.m3u8 + segments,
+    thumbnail JPEGs to frames_dir, and <output_dir>/master.m3u8 with measured
+    bandwidths. A rendition_root gives a re-transcode segment URLs that were
+    never served before (see backfill.py). Returns the renditions, smallest first.
     """
     renditions = build_ladder(info.width, info.height, info.fps)
     logger.info(
@@ -45,17 +46,24 @@ def create_adaptive_hls(input_file, output_dir, frames_dir, info):
     thumb_w, thumb_h = fit_within(info.width, info.height, *THUMBNAIL_BOX)
 
     for rendition in renditions:
-        os.makedirs(os.path.join(output_dir, rendition.name), exist_ok=True)
+        os.makedirs(os.path.join(output_dir, rendition_path(rendition, rendition_root)), exist_ok=True)
     os.makedirs(frames_dir, exist_ok=True)
 
-    args = build_ffmpeg_args(input_file, output_dir, frames_dir, info, renditions, (thumb_w, thumb_h))
+    args = build_ffmpeg_args(
+        input_file, output_dir, frames_dir, info, renditions, (thumb_w, thumb_h), rendition_root
+    )
     run_ffmpeg(args, f"HLS x{len(renditions)} + thumbnails")
 
-    write_master_playlist(output_dir, renditions, info.has_audio)
+    write_master_playlist(output_dir, renditions, info.has_audio, rendition_root)
     return renditions
 
 
-def build_ffmpeg_args(input_file, output_dir, frames_dir, info, renditions, thumb_size):
+def rendition_path(rendition, rendition_root=""):
+    """Folder of a rendition relative to the output dir, with '/' separators (it is also a URL path)."""
+    return f"{rendition_root}/{rendition.name}" if rendition_root else rendition.name
+
+
+def build_ffmpeg_args(input_file, output_dir, frames_dir, info, renditions, thumb_size, rendition_root=""):
     branches = len(renditions) + 1  # +1 for thumbnail frames
     labels = [f"[v{i}]" for i in range(branches)]
     filters = [f"[0:v:0]split={branches}{''.join(labels)}"]
@@ -70,7 +78,7 @@ def build_ffmpeg_args(input_file, output_dir, frames_dir, info, renditions, thum
     args = ["-i", input_file, "-filter_complex", ";".join(filters)]
 
     for i, r in enumerate(renditions):
-        variant_dir = os.path.join(output_dir, r.name)
+        variant_dir = os.path.join(output_dir, rendition_path(r, rendition_root))
         args += ["-map", f"[out{i}]"]
         if info.has_audio:
             args += ["-map", "0:a:0"]
@@ -98,11 +106,11 @@ def build_ffmpeg_args(input_file, output_dir, frames_dir, info, renditions, thum
     return args
 
 
-def write_master_playlist(output_dir, renditions, has_audio):
+def write_master_playlist(output_dir, renditions, has_audio, rendition_root=""):
     entries = []
     version = 3
     for r in renditions:
-        variant_dir = os.path.join(output_dir, r.name)
+        variant_dir = os.path.join(output_dir, rendition_path(r, rendition_root))
         playlist_path = os.path.join(variant_dir, "stream.m3u8")
         segments = read_media_playlist(playlist_path)
         if not segments:
@@ -119,7 +127,7 @@ def write_master_playlist(output_dir, renditions, has_audio):
         if codecs:
             attrs += f',CODECS="{codecs}"'
         lines.append(f"#EXT-X-STREAM-INF:{attrs}")
-        lines.append(f"{r.name}/stream.m3u8")
+        lines.append(f"{rendition_path(r, rendition_root)}/stream.m3u8")
 
     with open(os.path.join(output_dir, "master.m3u8"), "w") as f:
         f.write("\n".join(lines) + "\n")
