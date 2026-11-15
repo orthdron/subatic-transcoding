@@ -11,7 +11,8 @@ CONTENT_TYPES = {
     ".ts": "video/mp2t",
     ".vtt": "text/vtt",
     ".jpg": "image/jpeg",
-    ".gif": "image/gif",
+    ".webp": "image/webp",
+    ".mp4": "video/mp4",
 }
 # Segment names are reused only if the whole video is re-transcoded, which
 # happens before it is ever marked DONE, so segments can be cached forever.

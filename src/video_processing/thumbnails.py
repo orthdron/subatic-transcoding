@@ -6,18 +6,33 @@ from PIL import Image
 
 from src.logging_config import logger
 from src.video_processing.ffmpeg_cli import run_ffmpeg
-from src.video_processing.hls_generator import THUMBNAIL_COUNT
+from src.video_processing.hls_generator import THUMBNAIL_COUNT, THUMBNAIL_FRAME_PATTERN
 from src.video_processing.ladder import fit_within, oriented_box
 
 SPRITE_COLUMNS = 10
-SHORT_GIF_FRAMES = 10
-SHORT_GIF_FRAME_MS = 5000
-LONG_GIF_FRAME_MS = 500
 POSTER_BOX = (1920, 1080)
+
+# Card previews for the web app's video grid, at the thumbnail frame size
+# (grid tiles are 16:9 and about 300-480 CSS px wide).
+#
+# short.webp loops at rest on every card: 10 frames, 5 s each. Animated WebP
+# still works in a plain <img> and is about 7x smaller than a GIF.
+SHORT_PREVIEW_FRAMES = 10
+SHORT_PREVIEW_FRAME_MS = 5000
+SHORT_PREVIEW_QUALITY = 70
+# Pillow's default (0) is ~35% bigger; 4 takes ~50 ms here, 6 is 40x slower for ~3% less.
+SHORT_PREVIEW_METHOD = 4
+# long.mp4 plays on hover: every thumbnail frame, 0.5 s each. Neighbouring
+# frames look alike, so H.264 is 2-3x smaller than animated WebP and 15x
+# smaller than GIF. The clip is always THUMBNAIL_COUNT / LONG_PREVIEW_FPS
+# = 50 s, so the bitrate cap bounds the file at about 250 KB for any content.
+LONG_PREVIEW_FPS = 2
+LONG_PREVIEW_CRF = 28
+LONG_PREVIEW_MAX_KBPS = 40
 
 
 def create_thumbnails(input_file, frames_dir, output_dir, info):
-    """Build sprite.jpg + sprite.vtt, short.gif, long.gif and poster.jpg.
+    """Build sprite.jpg + sprite.vtt, short.webp, long.mp4 and poster.jpg.
 
     The small frames come from the HLS run (frames_dir); the poster is grabbed
     separately at full quality from the middle of the video.
@@ -29,7 +44,7 @@ def create_thumbnails(input_file, frames_dir, output_dir, info):
     with open(os.path.join(output_dir, "sprite.vtt"), "w") as f:
         f.write(build_sprite_vtt(len(images), tile_w, tile_h, info.duration))
 
-    create_gifs(images, output_dir)
+    create_previews(images, frames_dir, output_dir)
 
     poster_path = os.path.join(output_dir, "poster.jpg")
     poster_w, poster_h = fit_within(
@@ -85,22 +100,39 @@ def format_vtt_timestamp(milliseconds):
     return f"{hours:02d}:{minutes:02d}:{seconds:02d}.{millis:03d}"
 
 
-def create_gifs(images, output_dir):
-    step = max(1, len(images) // SHORT_GIF_FRAMES)
-    short_frames = images[::step][:SHORT_GIF_FRAMES]
+def create_previews(images, frames_dir, output_dir):
+    """short.webp (loops at rest) and long.mp4 (plays on hover) for the video grid cards."""
+    step = max(1, len(images) // SHORT_PREVIEW_FRAMES)
+    short_frames = images[::step][:SHORT_PREVIEW_FRAMES]
     short_frames[0].save(
-        os.path.join(output_dir, "short.gif"),
+        os.path.join(output_dir, "short.webp"),
         append_images=short_frames[1:],
         save_all=True,
-        duration=SHORT_GIF_FRAME_MS,
+        duration=SHORT_PREVIEW_FRAME_MS,
         loop=0,
+        quality=SHORT_PREVIEW_QUALITY,
+        method=SHORT_PREVIEW_METHOD,
     )
-    images[0].save(
-        os.path.join(output_dir, "long.gif"),
-        append_images=images[1:],
-        save_all=True,
-        duration=LONG_GIF_FRAME_MS,
-        loop=0,
+    run_ffmpeg(
+        [
+            "-framerate", str(LONG_PREVIEW_FPS),
+            "-start_number", "1",
+            "-i", os.path.join(frames_dir, THUMBNAIL_FRAME_PATTERN),
+            "-frames:v", str(len(images)),
+            # The JPEG frames are full range; browsers expect TV-range H.264.
+            "-vf", "scale=out_range=tv",
+            "-c:v", "libx264",
+            "-preset", "slow",
+            "-crf", str(LONG_PREVIEW_CRF),
+            "-maxrate", f"{LONG_PREVIEW_MAX_KBPS}k",
+            "-bufsize", f"{LONG_PREVIEW_MAX_KBPS * 2}k",
+            "-pix_fmt", "yuv420p",
+            "-an",
+            # moov first, so the browser can start playing before the download ends.
+            "-movflags", "+faststart",
+            os.path.join(output_dir, "long.mp4"),
+        ],
+        "long preview",
     )
 
 

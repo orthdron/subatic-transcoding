@@ -8,12 +8,19 @@ import tempfile
 import unittest
 from unittest import mock
 
+from PIL import Image
+
 from src import process
 from src.video_processing import workspace as workspace_module
 from src.video_processing.ffmpeg_cli import probe_stream
-from src.video_processing.hls_generator import read_media_playlist
+from src.video_processing.hls_generator import THUMBNAIL_BOX, THUMBNAIL_FRAME_PATTERN, read_media_playlist
+from src.video_processing.thumbnails import create_previews, load_frames
 
 HAVE_FFMPEG = shutil.which("ffmpeg") and shutil.which("ffprobe")
+
+# Card previews load on every grid card (short) or on hover (long).
+SHORT_PREVIEW_BUDGET = 100 * 1024
+LONG_PREVIEW_BUDGET = 250 * 1024
 
 
 def make_clip(path, size, seconds, audio=True, extra_input_args=()):
@@ -88,9 +95,10 @@ class PipelineTest(unittest.TestCase):
         return [(dict(re.findall(r'([A-Z-]+)=("[^"]*"|[^,]*)', attrs)), uri) for attrs, uri in entries]
 
     def assert_common_outputs(self, out):
-        for name in ["master.m3u8", "sprite.jpg", "sprite.vtt", "short.gif", "long.gif", "poster.jpg"]:
+        for name in ["master.m3u8", "sprite.jpg", "sprite.vtt", "short.webp", "long.mp4", "poster.jpg"]:
             self.assertTrue(os.path.exists(os.path.join(out, name)), name)
         self.assertFalse(os.path.exists(os.path.join(out, os.path.basename(out))), "raw source must not be published")
+        self.assertEqual([n for n in os.listdir(out) if n.endswith(".gif")], [])
 
     def test_landscape(self):
         out, webhook, s3 = self.run_pipeline("landscape")
@@ -120,6 +128,9 @@ class PipelineTest(unittest.TestCase):
 
         self.assertEqual(s3.extra_args["landscape/720p/000.ts"]["ContentType"], "video/mp2t")
         self.assertEqual(s3.extra_args["landscape/sprite.vtt"]["ContentType"], "text/vtt")
+        self.assertEqual(s3.extra_args["landscape/short.webp"]["ContentType"], "image/webp")
+        self.assertEqual(s3.extra_args["landscape/long.mp4"]["ContentType"], "video/mp4")
+        assert_card_previews(self, out, (384, 216))
 
         poster = probe_stream(os.path.join(out, "poster.jpg"), "v:0", "width,height")
         self.assertEqual((poster["width"], poster["height"]), (1280, 720))
@@ -133,6 +144,7 @@ class PipelineTest(unittest.TestCase):
         self.assertIn("720x1280", resolutions)
         with open(os.path.join(out, "sprite.vtt")) as f:
             self.assertIn("#xywh=0,0,122,216", f.read())
+        assert_card_previews(self, out, (122, 216))
 
     def test_tiny_source_without_audio(self):
         out, _, _ = self.run_pipeline("tiny")
@@ -150,6 +162,59 @@ class PipelineTest(unittest.TestCase):
             vtt = f.read()
         self.assertIn("00:00:00.000 --> 00:00:00.010", vtt)
         self.assertTrue(vtt.rstrip().splitlines()[-2].endswith("--> 00:00:01.000"))
+
+
+def assert_card_previews(test, out, size):
+    """short.webp: 10 frames x 5 s; long.mp4: 100 frames x 0.5 s, silent H.264; both within budget."""
+    short_path = os.path.join(out, "short.webp")
+    with Image.open(short_path) as short:
+        test.assertEqual(short.format, "WEBP")
+        test.assertEqual(short.size, size)
+        durations = []
+        for i in range(short.n_frames):
+            short.seek(i)
+            short.load()  # frame info is read lazily
+            durations.append(short.info["duration"])
+    test.assertEqual(durations, [5000] * 10)
+    test.assertLessEqual(os.path.getsize(short_path), SHORT_PREVIEW_BUDGET)
+
+    long_path = os.path.join(out, "long.mp4")
+    video = probe_stream(long_path, "v:0", "codec_name,pix_fmt,width,height,avg_frame_rate,nb_frames")
+    test.assertEqual(
+        video,
+        {
+            "codec_name": "h264",
+            "pix_fmt": "yuv420p",
+            "width": size[0],
+            "height": size[1],
+            "avg_frame_rate": "2/1",
+            "nb_frames": "100",
+        },
+    )
+    test.assertEqual(probe_stream(long_path, "a", "codec_name"), {}, "previews must be silent")
+    test.assertLessEqual(os.path.getsize(long_path), LONG_PREVIEW_BUDGET)
+
+
+@unittest.skipUnless(HAVE_FFMPEG, "ffmpeg/ffprobe not installed")
+class CardPreviewBudgetTest(unittest.TestCase):
+    """Card previews of a 30 s 1080p clip with heavy film grain, a hard case for every codec."""
+
+    def test_previews_stay_within_budget(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            frames_dir = os.path.join(tmp, "frames")
+            os.makedirs(frames_dir)
+            # Same frame sampling as the HLS run: 100 frames scaled into THUMBNAIL_BOX.
+            subprocess.run(
+                [
+                    "ffmpeg", "-v", "error", "-y",
+                    "-f", "lavfi", "-i", "testsrc2=size=1920x1080:rate=30", "-t", "30",
+                    "-vf", f"noise=alls=18:allf=t+u,fps=100/30,scale={THUMBNAIL_BOX[0]}:{THUMBNAIL_BOX[1]},setsar=1",
+                    "-q:v", "3", os.path.join(frames_dir, THUMBNAIL_FRAME_PATTERN),
+                ],
+                check=True,
+            )
+            create_previews(load_frames(frames_dir), frames_dir, tmp)
+            assert_card_previews(self, tmp, THUMBNAIL_BOX)
 
 
 if __name__ == "__main__":

@@ -44,7 +44,8 @@ class UploadTest(unittest.TestCase):
         self.assertEqual(upload_args("a/000.ts")["ContentType"], "video/mp2t")
         self.assertEqual(upload_args("sprite.vtt")["ContentType"], "text/vtt")
         self.assertEqual(upload_args("poster.jpg")["ContentType"], "image/jpeg")
-        self.assertEqual(upload_args("short.gif")["ContentType"], "image/gif")
+        self.assertEqual(upload_args("short.webp")["ContentType"], "image/webp")
+        self.assertEqual(upload_args("long.mp4")["ContentType"], "video/mp4")
         self.assertIn("immutable", upload_args("a/000.ts")["CacheControl"])
         self.assertNotIn("immutable", upload_args("master.m3u8")["CacheControl"])
 

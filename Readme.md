@@ -86,7 +86,8 @@ WEBHOOK_TOKEN=YOUR_WEBHOOK_TOKEN
 For each upload `uploads/<id>` in the raw bucket, the transcoder writes to `<id>/` in the processed bucket:
 
 - `master.m3u8` plus one H.264/AAC HLS rendition per ladder rung that fits the source (360p up to 2160p, sized by the short side so portrait video keeps its resolution; sources below 360p get one native-size rendition). Segments are 6 s and cut at the same timestamps in every rendition; `BANDWIDTH` values are measured from the actual segments.
-- `sprite.jpg` + `sprite.vtt` (seek-preview thumbnails), `short.gif`, `long.gif`, and `poster.jpg` (full-quality frame from the middle of the video).
+- `sprite.jpg` + `sprite.vtt` (seek-preview thumbnails) and `poster.jpg` (full-quality frame from the middle of the video).
+- Video-card previews at the thumbnail size (up to 384x216): `short.webp`, an animated WebP of 10 frames shown 5 s each that loops at rest, and `long.mp4`, a muted H.264 clip of all 100 thumbnails at 0.5 s each for hover. Expect about 40-70 KB for `short.webp` and under 200 KB for `long.mp4`, whose bitrate cap keeps it under about 250 KB whatever the content. Videos transcoded before these replaced `short.gif`/`long.gif` only have the GIFs.
 
 The raw upload is deleted only after the web app has accepted the `DONE` status, so a failed status update never loses the source.
 
