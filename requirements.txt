@@ -1,8 +1,4 @@
 boto3
 python-dotenv
-moviepy==1.0.3
-ffmpeg
-ffmpeg-python
 Pillow
 requests
-imageio

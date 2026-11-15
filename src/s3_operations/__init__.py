@@ -1,5 +1,4 @@
-# This file can be left empty to mark the directory as a Python package.
-# You can also use it to provide convenient imports if needed, for example:
+from .download import delete_file_from_s3, download_from_s3
+from .upload import upload_directory
 
-from .upload import upload_to_s3
-from .download import download_from_s3
+__all__ = ["delete_file_from_s3", "download_from_s3", "upload_directory"]

@@ -3,7 +3,7 @@ FROM python:3.15-slim
 
 # Install ffmpeg
 RUN apt-get update && \
-    apt-get install -y ffmpeg && \
+    apt-get install -y --no-install-recommends ffmpeg && \
     rm -rf /var/lib/apt/lists/*
 
 # Set the working directory in the container

@@ -1,71 +1,129 @@
 import json
 import subprocess
-from moviepy.editor import VideoFileClip
+from dataclasses import dataclass
+
 from src.logging_config import logger
 
 
-def is_video_file_fine(input_file):
+@dataclass(frozen=True)
+class VideoInfo:
+    """What the pipeline needs to know about a source file.
+
+    width/height are the *display* size: rotation metadata (phones record
+    portrait video as rotated landscape) and non-square pixels are already
+    applied, so they match the frames ffmpeg hands to the filter graph.
+    """
+
+    width: int
+    height: int
+    duration: float
+    fps: float
+    has_audio: bool
+    bitrate_kbps: int
+
+
+def probe_video(path):
+    """Read a source file with ffprobe. Raises ValueError if it is not a usable video."""
+    logger.info(f"Probing {path}")
+    cmd = [
+        "ffprobe",
+        "-v",
+        "error",
+        "-print_format",
+        "json",
+        "-show_format",
+        "-show_streams",
+        path,
+    ]
+    result = subprocess.run(cmd, capture_output=True, text=True)
+    if result.returncode != 0:
+        raise ValueError(f"ffprobe could not read {path}: {result.stderr.strip()[-500:]}")
     try:
-        with VideoFileClip(input_file) as video_clip:
-            return True
-    except Exception as e:
-        logger.error(f"Error checking video file: {e}")
-        return False
-
-
-def get_video_info(filename):
-    logger.info(f"Getting video info for file: {filename}")
-    try:
-        cmd = [
-            "ffprobe",
-            "-v",
-            "quiet",
-            "-print_format",
-            "json",
-            "-show_format",
-            "-show_streams",
-            filename,
-        ]
-        result = subprocess.run(cmd, capture_output=True, text=True)
-
-        if result.returncode != 0:
-            raise subprocess.CalledProcessError(result.returncode, cmd, result.stderr)
-
-        probe_data = json.loads(result.stdout)
-
-        video_stream = next(
-            (
-                stream
-                for stream in probe_data["streams"]
-                if stream["codec_type"] == "video"
-            ),
-            None,
-        )
-
-        if not video_stream:
-            raise ValueError("No video stream found")
-
-        duration = float(probe_data["format"].get("duration", 0))
-        bitrate = int(probe_data["format"].get("bit_rate", 0)) // 1000
-
-        info = {
-            "duration": duration,
-            "width": int(video_stream["width"]),
-            "height": int(video_stream["height"]),
-            "bitrate": bitrate,
-        }
-
-        logger.info(f"Extracted video info: {info}")
-        return info
-
-    except subprocess.CalledProcessError as e:
-        logger.error(f"FFprobe command failed: {e.stderr}", exc_info=True)
-        raise
+        data = json.loads(result.stdout)
     except json.JSONDecodeError as e:
-        logger.error(f"Failed to parse FFprobe output: {str(e)}", exc_info=True)
-        raise
-    except Exception as e:
-        logger.error(
-            f"Error getting video info for '{filename}': {str(e)}", exc_info=True
-        )
-        raise
+        raise ValueError(f"ffprobe returned invalid JSON for {path}: {e}") from e
+
+    info = parse_probe(data)
+    logger.info(f"Video info: {info}")
+    return info
+
+
+def parse_probe(data):
+    streams = data.get("streams", [])
+    fmt = data.get("format", {})
+
+    video = next(
+        (
+            s
+            for s in streams
+            if s.get("codec_type") == "video"
+            # Cover art in audio files shows up as a one-frame video stream.
+            and not s.get("disposition", {}).get("attached_pic")
+        ),
+        None,
+    )
+    if video is None:
+        raise ValueError("No video stream found")
+
+    width = int(video.get("width") or 0)
+    height = int(video.get("height") or 0)
+    if width <= 0 or height <= 0:
+        raise ValueError("Video stream has no dimensions")
+
+    sar = _parse_ratio(video.get("sample_aspect_ratio"))
+    if sar and abs(sar - 1) > 0.01:
+        width = round(width * sar)
+    if abs(_rotation(video)) % 180 == 90:
+        width, height = height, width
+
+    duration = _first_positive(fmt.get("duration"), video.get("duration"))
+    if duration <= 0:
+        raise ValueError("Could not determine video duration")
+
+    fps = (
+        _parse_ratio(video.get("avg_frame_rate"))
+        or _parse_ratio(video.get("r_frame_rate"))
+        or 30.0
+    )
+
+    return VideoInfo(
+        width=width,
+        height=height,
+        duration=duration,
+        fps=fps,
+        has_audio=any(s.get("codec_type") == "audio" for s in streams),
+        bitrate_kbps=int(fmt.get("bit_rate") or 0) // 1000,
+    )
+
+
+def _rotation(stream):
+    for side_data in stream.get("side_data_list", []):
+        if "rotation" in side_data:
+            return int(round(float(side_data["rotation"])))
+    rotate_tag = stream.get("tags", {}).get("rotate")
+    return int(rotate_tag) if rotate_tag else 0
+
+
+def _parse_ratio(value):
+    """Parse '30000/1001' or '16:9'. Returns None for missing or zero values like '0/0'."""
+    if not value:
+        return None
+    sep = ":" if ":" in value else "/"
+    try:
+        num, den = (float(part) for part in value.split(sep))
+    except ValueError:
+        return None
+    if num <= 0 or den <= 0:
+        return None
+    return num / den
+
+
+def _first_positive(*values):
+    for value in values:
+        try:
+            number = float(value)
+        except (TypeError, ValueError):
+            continue
+        if number > 0:
+            return number
+    return 0.0
