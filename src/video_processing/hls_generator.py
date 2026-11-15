@@ -15,6 +15,7 @@ PRESET = "veryfast"
 
 THUMBNAIL_COUNT = 100
 THUMBNAIL_BOX = (384, 216)
+THUMBNAIL_FRAME_PATTERN = "frame%03d.jpg"  # ffmpeg numbers them from 001
 
 # The rendition players start on (listed first in the master playlist).
 # Starting at the top rendition makes the first seconds slow on most links.
@@ -93,7 +94,7 @@ def build_ffmpeg_args(input_file, output_dir, frames_dir, info, renditions, thum
             os.path.join(variant_dir, "stream.m3u8"),
         ]
 
-    args += ["-map", "[thumbs]", "-q:v", "3", os.path.join(frames_dir, "frame%03d.jpg")]
+    args += ["-map", "[thumbs]", "-q:v", "3", os.path.join(frames_dir, THUMBNAIL_FRAME_PATTERN)]
     return args
 
 
