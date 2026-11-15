@@ -16,8 +16,9 @@ re-transcode possible:
 
 Nothing is deleted by a backfill. Old renditions stay playable for anyone
 holding a cached old master.m3u8; `--prune` removes them, the GIFs and the
-legacy/ copies once that is no longer a concern. The raw upload at <id>/<id>
-is never touched here.
+legacy/ copies once that is no longer a concern. `--delete-sources` deletes
+the publicly readable raw uploads at <id>/<id> of upgraded videos; after
+that they can no longer be re-transcoded.
 
 Without --apply every command only prints what it would do.
 """
@@ -138,8 +139,7 @@ def backfill_video(video_id, client, bucket, index):
     return info
 
 
-def prune_video(video_id, client, bucket, index):
-    keys = [f"{video_id}/{f}" for f in index.legacy_leftovers(video_id)]
+def delete_keys(video_id, client, bucket, keys):
     for i in range(0, len(keys), DELETE_BATCH):
         batch = keys[i : i + DELETE_BATCH]
         response = client.delete_objects(
@@ -147,8 +147,12 @@ def prune_video(video_id, client, bucket, index):
         )
         errors = response.get("Errors") or []
         if errors:
-            raise RuntimeError(f"Could not delete {len(errors)} legacy files of {video_id}: {errors[:3]}")
+            raise RuntimeError(f"Could not delete {len(errors)} files of {video_id}: {errors[:3]}")
     return len(keys)
+
+
+def prune_video(video_id, client, bucket, index):
+    return delete_keys(video_id, client, bucket, [f"{video_id}/{f}" for f in index.legacy_leftovers(video_id)])
 
 
 def select_ids(index, requested, predicate):
@@ -165,6 +169,9 @@ def run(argv=None, client=None):
     parser.add_argument("ids", nargs="*", help="video ids (default: every eligible video)")
     parser.add_argument("--apply", action="store_true", help="make changes (default: dry run)")
     parser.add_argument("--prune", action="store_true", help="delete legacy files of backfilled videos")
+    parser.add_argument(
+        "--delete-sources", action="store_true", help="delete the public raw uploads (<id>/<id>) of backfilled videos"
+    )
     parser.add_argument("--limit", type=int, help="process at most this many videos")
     parser.add_argument("--env-file", help="load settings from this file instead of .env")
     args = parser.parse_args(argv)
@@ -179,6 +186,15 @@ def run(argv=None, client=None):
     bucket = load_config().s3_processed_bucket
     client = client or create_processed_client()
     index = BucketIndex.load(client, bucket)
+
+    if args.delete_sources:
+        ids = select_ids(index, args.ids, lambda v: index.is_backfilled(v) and index.has_source(v))[: args.limit]
+        for video_id in ids:
+            print(f"{video_id}: {video_id}/{video_id}")
+            if args.apply:
+                delete_keys(video_id, client, bucket, [f"{video_id}/{video_id}"])
+        print(f"{'Deleted' if args.apply else 'Would delete'} the raw uploads of {len(ids)} videos")
+        return 0
 
     if args.prune:
         ids = select_ids(index, args.ids, lambda v: bool(index.legacy_leftovers(v)))[: args.limit]

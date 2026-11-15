@@ -100,7 +100,7 @@ python -m src.backfill --env-file .env.production            # dry run: list vid
 python -m src.backfill --env-file .env.production --apply    # all of them, or pass ids
 ```
 
-New renditions go under `<id>/v2/` so no segment URL is reused (old segments may still be cached by the CDN and by browsers). `master.m3u8`, `sprite.*` and `poster.jpg` are replaced in place after copies are kept in `<id>/legacy/`, and `short.webp`/`long.mp4` are added. Old files are not deleted, so viewers holding a cached old `master.m3u8` keep playing. Once those caches have expired, `--prune --apply` deletes the old renditions, GIFs and `legacy/` copies. The raw file at `<id>/<id>` is never touched. Run it from a separate checkout, not inside a running worker's container.
+New renditions go under `<id>/v2/` so no segment URL is reused (old segments may still be cached by the CDN and by browsers). `master.m3u8`, `sprite.*` and `poster.jpg` are replaced in place after copies are kept in `<id>/legacy/`, and `short.webp`/`long.mp4` are added. Old files are not deleted, so viewers holding a cached old `master.m3u8` keep playing. Once those caches have expired, `--prune --apply` deletes the old renditions, GIFs and `legacy/` copies. The raw file at `<id>/<id>` is publicly readable through the bucket's public URL; once a video is upgraded, `--delete-sources --apply` deletes it (after that the video cannot be re-transcoded). Run the backfill from a separate checkout, not inside a running worker's container.
 
 ## Development
 

@@ -163,17 +163,28 @@ class BackfillRunTest(unittest.TestCase):
         self.assertFalse(os.path.exists(backfill.WORK_ROOT), "work folder should be cleaned up")
         self.assertEqual(objects["other/master.m3u8"], old["other/master.m3u8"])
 
+        # Raw uploads go only when asked, and only for upgraded videos.
+        self.bucket.objects["legacyonly/legacyonly"] = b"raw"
+        self.bucket.objects["legacyonly/master.m3u8"] = LEGACY_MASTER.encode()
+        self.assertEqual(self.run_backfill("--delete-sources"), 0)
+        self.assertIn("vid/vid", objects)
+        self.assertEqual(self.run_backfill("--delete-sources", "--apply", "legacyonly"), 0)
+        self.assertIn("legacyonly/legacyonly", objects, "not upgraded, so its source stays")
+        self.assertEqual(self.run_backfill("--delete-sources", "--apply"), 0)
+        self.assertNotIn("vid/vid", objects)
+        self.assertIn("legacyonly/legacyonly", objects)
+        del objects["legacyonly/legacyonly"], objects["legacyonly/master.m3u8"]
+
         # A second run finds nothing to do and keeps the first backups.
         self.assertEqual(self.run_backfill("--apply"), 0)
         self.assertEqual(objects["vid/legacy/master.m3u8"], old["vid/master.m3u8"])
 
         self.assertEqual(self.run_backfill("--prune", "--apply"), 0)
         remaining = sorted(k for k in objects if k.startswith("vid/"))
-        self.assertIn("vid/vid", remaining, "the raw upload is never deleted")
         for key in remaining:
             name = key[len("vid/") :]
             self.assertTrue(
-                name == "vid" or name.startswith("v2/") or name in (*backfill.REPLACED_FILES, "short.webp", "long.mp4"),
+                name.startswith("v2/") or name in (*backfill.REPLACED_FILES, "short.webp", "long.mp4"),
                 key,
             )
 
