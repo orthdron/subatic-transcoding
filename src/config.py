@@ -1,4 +1,6 @@
 import os
+from functools import lru_cache
+
 import boto3
 from dotenv import load_dotenv
 
@@ -41,6 +43,8 @@ class Config:
         )
 
 
+@lru_cache(maxsize=1)
 def load_config():
+    """The process-wide Config, built once (after .env is loaded) and reused."""
     load_dotenv()
     return Config()
