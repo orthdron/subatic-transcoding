@@ -1,15 +1,19 @@
-"""Delete videos that are past the retention policy: files first, then the database row.
+"""Delete videos past the web app's retention policy: files first, then the database row.
 
-The web app decides which videos have expired (GET /api/video/expired) and
-deletes their rows (POST /api/video/delete, which re-checks the policy).
-This worker holds the bucket credentials, so it deletes the files in between:
-everything under <id>/ in the processed bucket and uploads/<id> in the raw
-bucket. Files go first so a failure never leaves public files without a row
-pointing at them; the next run retries the video.
+Retention is opt-in and off by default. It only runs where the web app sets
+VIDEO_RETENTION_DAYS and VIDEO_RETENTION_KEEP_USERS (subatic.com does, as a
+demo); elsewhere the web app answers 404 and this exits with an error.
 
-Meant for cron, e.g. daily on the host running the worker:
+The web app owns the policy: it lists expired videos (GET /api/video/expired)
+and deletes their rows (POST /api/video/delete, which checks the policy
+again). This worker holds the bucket credentials, so it deletes the files in
+between: everything under <id>/ in the processed bucket and uploads/<id> in
+the raw bucket. Files go first so a failure never leaves public files without
+a row pointing at them; the next run retries the video.
 
-    python -m src.retention --older-than-days 30 --keep-user admin --apply
+Meant for a daily cron on the host running the worker:
+
+    python -m src.retention --apply
 
 Without --apply it only lists what it would delete.
 """
@@ -26,21 +30,31 @@ from src.logging_config import logger
 VIDEO_ID = re.compile(r"^[A-Za-z0-9_-]+$")
 
 
-def fetch_expired(policy, session=requests):
+class RetentionOff(RuntimeError):
+    pass
+
+
+def fetch_expired(session=requests):
+    """Returns (ids, policy) from the web app."""
     from src.webhook import REQUEST_TIMEOUT, _endpoint
 
     url, headers = _endpoint("/api/video/expired")
-    params = {"olderThanDays": policy["olderThanDays"], "keepUser": policy["keepUsers"]}
-    response = session.get(url, params=params, headers=headers, timeout=REQUEST_TIMEOUT)
+    response = session.get(url, headers=headers, timeout=REQUEST_TIMEOUT)
+    if response.status_code == 404:
+        raise RetentionOff(
+            "Retention is off on the web app; it runs only where VIDEO_RETENTION_DAYS "
+            "and VIDEO_RETENTION_KEEP_USERS are set"
+        )
     response.raise_for_status()
-    return response.json()["ids"]
+    data = response.json()
+    return data["ids"], data["policy"]
 
 
-def delete_row(video_id, policy, session=requests):
+def delete_row(video_id, session=requests):
     from src.webhook import REQUEST_TIMEOUT, _endpoint
 
     url, headers = _endpoint("/api/video/delete")
-    response = session.post(url, json={"id": video_id, **policy}, headers=headers, timeout=REQUEST_TIMEOUT)
+    response = session.post(url, json={"id": video_id}, headers=headers, timeout=REQUEST_TIMEOUT)
     response.raise_for_status()
     return response.json()["deleted"]
 
@@ -63,13 +77,9 @@ def delete_files(video_id, processed, processed_bucket, raw, raw_bucket):
 
 def run(argv=None, processed=None, raw=None, session=requests):
     parser = argparse.ArgumentParser(prog="python -m src.retention", description=__doc__.split("\n\n")[0])
-    parser.add_argument("--older-than-days", type=int, required=True, help="delete videos uploaded before this many days ago")
-    parser.add_argument("--keep-user", action="append", required=True, help="user whose videos are never deleted (repeatable)")
     parser.add_argument("--apply", action="store_true", help="delete (default: only list)")
     parser.add_argument("--env-file", help="load settings from this file instead of .env")
     args = parser.parse_args(argv)
-    if args.older_than_days < 0:
-        parser.error("--older-than-days must be 0 or more")
 
     if args.env_file:
         load_dotenv(args.env_file, override=True)
@@ -80,10 +90,13 @@ def run(argv=None, processed=None, raw=None, session=requests):
     from src.s3_operations.upload import create_processed_client
 
     config = load_config()
-    policy = {"olderThanDays": args.older_than_days, "keepUsers": args.keep_user}
-    ids = fetch_expired(policy, session)
+    try:
+        ids, policy = fetch_expired(session)
+    except RetentionOff as e:
+        print(e)
+        return 1
     print(
-        f"{len(ids)} videos older than {args.older_than_days} days not by {', '.join(args.keep_user)}: "
+        f"{len(ids)} videos older than {policy['olderThanDays']} days not by {', '.join(policy['keepUsers'])}: "
         f"{' '.join(ids) or '-'}",
         flush=True,
     )
@@ -96,7 +109,7 @@ def run(argv=None, processed=None, raw=None, session=requests):
     for video_id in ids:
         try:
             count = delete_files(video_id, processed, config.s3_processed_bucket, raw, config.s3_rawfiles_bucket)
-            deleted = delete_row(video_id, policy, session)
+            deleted = delete_row(video_id, session)
             logger.info(f"Deleted video {video_id}: {count} files, row {'deleted' if deleted else 'already gone'}")
         except Exception:
             logger.exception(f"Could not delete video {video_id}")

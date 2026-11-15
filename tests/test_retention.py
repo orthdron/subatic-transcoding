@@ -15,14 +15,20 @@ class RawBucket(FakeBucket):
 class FakeWebApp:
     """Stands in for requests against the web app's retention endpoints."""
 
+    POLICY = {"olderThanDays": 30, "keepUsers": ["admin"]}
+
     def __init__(self, expired, processed):
         self.expired = list(expired)
         self.processed = processed
         self.calls = []
+        self.enabled = True
 
-    def get(self, url, params, headers, timeout):
-        self.calls.append(("list", url, params))
-        return mock.Mock(json=lambda: {"ids": list(self.expired)}, raise_for_status=lambda: None)
+    def get(self, url, headers, timeout):
+        self.calls.append(("list", url, None))
+        if not self.enabled:
+            return mock.Mock(status_code=404)
+        ids = list(self.expired)
+        return mock.Mock(status_code=200, json=lambda: {"ids": ids, "policy": self.POLICY}, raise_for_status=lambda: None)
 
     def post(self, url, json, headers, timeout):
         video_id = json["id"]
@@ -58,7 +64,7 @@ class RetentionTest(unittest.TestCase):
 
     def run_retention(self, *argv):
         return retention.run(
-            ["--older-than-days", "30", "--keep-user", "admin", *argv],
+            list(argv),
             processed=self.processed,
             raw=self.raw,
             session=self.web,
@@ -68,23 +74,15 @@ class RetentionTest(unittest.TestCase):
         before = (dict(self.processed.objects), dict(self.raw.objects))
         self.assertEqual(self.run_retention(), 0)
         self.assertEqual((self.processed.objects, self.raw.objects), before)
-        self.assertEqual([c[0] for c in self.web.calls], ["list"])
-        _, url, params = self.web.calls[0]
-        self.assertEqual(url, "https://web/api/video/expired")
-        self.assertEqual(params, {"olderThanDays": 30, "keepUser": ["admin"]})
+        self.assertEqual(self.web.calls, [("list", "https://web/api/video/expired", None)])
 
     def test_apply_deletes_files_then_rows(self):
         self.assertEqual(self.run_retention("--apply"), 0)
         self.assertEqual(sorted(self.processed.objects), ["kept/master.m3u8", "oldest/master.m3u8"])
         self.assertEqual(sorted(self.raw.objects), ["uploads/kept"])
         deletes = [c[2] for c in self.web.calls if c[0] == "delete"]
-        self.assertEqual(
-            deletes,
-            [
-                {"id": "old", "olderThanDays": 30, "keepUsers": ["admin"]},
-                {"id": "older", "olderThanDays": 30, "keepUsers": ["admin"]},
-            ],
-        )
+        # Only the id is sent: the policy lives in the web app and cannot be widened from here.
+        self.assertEqual(deletes, [{"id": "old"}, {"id": "older"}])
 
     def test_odd_id_is_refused_and_reported(self):
         self.web.expired = ["", "old"]
@@ -92,9 +90,12 @@ class RetentionTest(unittest.TestCase):
         self.assertIn("kept/master.m3u8", self.processed.objects)
         self.assertNotIn("old/master.m3u8", self.processed.objects, "other videos still processed")
 
-    def test_keep_user_is_required(self):
-        with self.assertRaises(SystemExit):
-            retention.run(["--older-than-days", "30"], processed=self.processed, raw=self.raw, session=self.web)
+    def test_retention_off_on_the_web_app_deletes_nothing(self):
+        self.web.enabled = False
+        before = dict(self.processed.objects)
+        self.assertEqual(self.run_retention("--apply"), 1)
+        self.assertEqual(self.processed.objects, before)
+        self.assertEqual([c[0] for c in self.web.calls], ["list"])
 
 
 if __name__ == "__main__":

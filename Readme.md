@@ -102,14 +102,14 @@ python -m src.backfill --env-file .env.production --apply    # all of them, or p
 
 New renditions go under `<id>/v2/` so no segment URL is reused (old segments may still be cached by the CDN and by browsers). `master.m3u8`, `sprite.*` and `poster.jpg` are replaced in place after copies are kept in `<id>/legacy/`, and `short.webp`/`long.mp4` are added. Old files are not deleted, so viewers holding a cached old `master.m3u8` keep playing. Once those caches have expired, `--prune --apply` deletes the old renditions, GIFs and `legacy/` copies. The raw file at `<id>/<id>` is publicly readable through the bucket's public URL; once a video is upgraded, `--delete-sources --apply` deletes it (after that the video cannot be re-transcoded). Run the backfill from a separate checkout, not inside a running worker's container.
 
-## Deleting old videos
+## Deleting old videos (optional, off by default)
 
-`src/retention.py` deletes videos older than a number of days, except those of the users you keep. The web app picks the videos (`GET /api/video/expired`) and deletes their rows (`POST /api/video/delete`, which checks the policy again); this worker deletes their files from both buckets first. At least one `--keep-user` is required. Without `--apply` it only lists what it would delete.
+`src/retention.py` deletes videos a set number of days after upload, except those of chosen users. It does nothing unless the web app sets both `VIDEO_RETENTION_DAYS` and `VIDEO_RETENTION_KEEP_USERS` (comma-separated); without them the web app's retention endpoints answer 404 and the script exits with an error. subatic.com uses it to keep its public demo clean.
 
-Run it daily from cron on the host running the worker, for example to keep only `admin`'s videos past 30 days:
+The policy lives only in the web app: it lists expired videos (`GET /api/video/expired`) and deletes their rows (`POST /api/video/delete`, which checks the policy again). This worker deletes each video's files from both buckets in between. Without `--apply` it only lists what it would delete. To enable it, set the two variables on the web app and run it daily from cron on the worker's host:
 
 ```sh
-17 3 * * * docker exec $(docker ps -q -f name=<worker-container> | head -1) python -m src.retention --older-than-days 30 --keep-user admin --apply
+17 3 * * * docker exec $(docker ps -q -f name=<worker-container> | head -1) python -m src.retention --apply
 ```
 
 ## Development
